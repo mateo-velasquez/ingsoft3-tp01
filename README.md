@@ -1,4 +1,4 @@
-# ingsoft3-tp01 - versión B
+# ingsoft3-tp01 - versión A
 
 ## Instalacion
 
