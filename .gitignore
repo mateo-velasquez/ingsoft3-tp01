@@ -14,3 +14,6 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# Carpeta de ayuda
+z_helps
