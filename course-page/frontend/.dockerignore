@@ -1,0 +1,7 @@
+# ---- Dependencias y salidas de build ----
+# 72 MB que ademas traen binarios compilados para Windows: si se cuelan, pisan
+# los que npm ci instala para Linux y el build muere con
+# "Cannot find module @rollup/rollup-linux-x64-musl".
+**/node_modules
+**/dist
+**/build

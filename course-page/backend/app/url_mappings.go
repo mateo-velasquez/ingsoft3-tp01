@@ -23,8 +23,8 @@ func mapUrls() {
 	router.GET("/course/:id", controller.GetCourseById)    //check
 	router.GET("/courses", controller.GetCourses)          //check
 	router.GET("/course/search", controller.SearchCourses) //check
-	// TEST: http://localhost:8090/course/search?q=Cocina
-	// TEST: http://localhost:8090/course/search?q=Cocina&categories=32,48
+	// TEST: http://localhost:8080/course/search?q=Cocina
+	// TEST: http://localhost:8080/course/search?q=Cocina&categories=32,48
 	router.POST("/course", controller.InsertCourse)           //check
 	router.PUT("/course/:id", controller.PutCourseById)       //check
 	router.DELETE("/course/:id", controller.DeleteCourseById) //check
