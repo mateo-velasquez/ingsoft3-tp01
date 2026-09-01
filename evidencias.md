@@ -68,3 +68,64 @@ protegida, resolución de conflictos y manejo de releases y tags"*.
 El tag lo creé desde la terminal (`git tag -a v1.0.0` + `git push origin v1.0.0`) y la release la
 publiqué desde la web: el tag es el puntero inmutable, la release es la comunicación de qué incluye
 esa versión.
+
+---
+---
+
+# Evidencias — TP2: Contenedores
+
+Repositorio: https://github.com/mateo-velasquez/ingsoft3-tp01
+
+Imágenes publicadas en ghcr.io, con tag `v0.1.0` y visibilidad pública:
+`course-page-backend`, `course-page-frontend` y `course-page-database`.
+
+---
+
+## 1. `docker compose up -d` desde cero
+
+![Levantada del stack completo con docker compose](images/tp2/compose-up-down.png)
+
+`docker compose up -d --build` sobre un entorno limpio. Se crean la red, el volumen
+`course-page_db_data` y los tres contenedores:
+
+---
+
+## 2. Prueba de persistencia
+
+![La inscripción sobrevive a la recreación de los contenedores](images/tp2/app-funcionando.png)
+
+La aplicación en `localhost:3000` **después** del `down` + `up -d` (23:45:13 el `down`, 23:45:49
+esta pantalla). La inscripción del 31/8/2026 sigue ahí: es un dato creado a mano, no parte de la
+semilla, y por eso sirve como marcador.
+
+---
+
+## 3. Comparación de tamaño: imagen final vs imagen de build
+
+![Comparación de tamaños de imágenes](images/tp2/comparacion-tamanos.png)
+
+| Imagen | Rol | Tamaño |
+|---|---|---|
+| `golang:1.26-alpine` | compila | **364 MB** |
+| `alpine:3.21` | solo ejecuta | **12.2 MB** |
+| `course-page-backend` | imagen final | **60.8 MB** |
+
+La imagen que compila pesa seis veces más que la que se despliega. Esos ~303 MB de diferencia son el
+compilador de Go, su toolchain y el código fuente: viven en la etapa `build` y nunca cruzan a la
+final, que solo copia el binario sobre una base Alpine.
+
+Sin multi-stage la imagen de producción pesaría como la de build y llevaría un compilador adentro.
+
+---
+
+## 4. Imágenes publicadas en el registry
+
+![Packages publicados en GitHub Container Registry](images/tp2/packages-ghcr.png)
+
+Los tres packages en ghcr.io, visibles desde la pestaña *Packages* del perfil — ghcr los asocia a la
+cuenta, no al repositorio. Se verificó que se descargan sin credenciales, que es el checkpoint real:
+que la página diga *Public* no alcanza.
+
+Se publicó también la imagen de la base, aunque el enunciado solo exige backend y frontend: esa
+imagen lleva adentro el schema y los datos de ejemplo, así que sin ella el
+`docker-compose.registry.yml` no podría levantar el sistema sin el repositorio.

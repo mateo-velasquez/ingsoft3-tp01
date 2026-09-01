@@ -35,7 +35,7 @@ const CourseCard = ({ course, onEnroll, showEnrollButton = true, isEnrolled = fa
         {course.image_url && (
           <div className="w-32 h-32 flex-shrink-0 overflow-hidden rounded-lg">
             <img
-              src={`http://localhost:8090${course.image_url}`}
+              src={`/api${course.image_url}`}
               alt={course.course_name}
               className="w-full h-full object-cover"
               onError={(e) => {

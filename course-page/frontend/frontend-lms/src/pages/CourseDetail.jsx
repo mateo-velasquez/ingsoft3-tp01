@@ -303,7 +303,7 @@ const CourseDetail = () => {
               {course.image_url && (
                 <div className="w-full h-64 overflow-hidden rounded-t-lg">
                   <img
-                    src={`http://localhost:8090${course.image_url}`}
+                    src={`/api${course.image_url}`}
                     alt={course.course_name}
                     className="w-full h-full object-cover"
                     onError={(e) => {
@@ -437,7 +437,7 @@ const CourseDetail = () => {
                             </p>
                           </div>
                           <a
-                            href={`http://localhost:8090${
+                            href={`/api${
                               file.file_path
                             }`}
                             target="_blank"

@@ -1,6 +1,4 @@
-// Detectar si estamos en un contenedor Docker o en el host
-const isDocker = window.location.hostname === '172.18.0.4' || window.location.hostname.includes('docker');
-const API_BASE_URL = isDocker ? 'http://backend:8090' : 'http://localhost:8090';
+const API_BASE_URL = '/api';
 
 export const apiRequest = async (endpoint, options = {}) => {
   const url = `${API_BASE_URL}${endpoint}`;

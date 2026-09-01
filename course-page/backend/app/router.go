@@ -17,7 +17,7 @@ func init() {
 
 	// Configure CORS to allow frontend connections
 	config := cors.DefaultConfig()
-	config.AllowOrigins = []string{"http://localhost:5173", "http://127.0.0.1:5173", "http://frontend:5173"}
+	config.AllowOrigins = []string{"http://localhost:3000", "http://127.0.0.1:3000", "http://localhost:5173", "http://127.0.0.1:5173"}
 	config.AllowMethods = []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}
 	config.AllowHeaders = []string{"Origin", "Content-Type", "Accept", "Authorization"}
 	router.Use(cors.New(config))
@@ -32,5 +32,5 @@ func StartRoute() {
 	mapUrls() // Calls the mapUrls function and maps the server routes.
 
 	log.Info("Starting server") // Logs an info message indicating the server is starting.
-	router.Run(":8090")         // Starts the server on port 8090 and begins listening and handling HTTP requests.
+	router.Run(":8080")         // Starts the server on port 8080 and begins listening and handling HTTP requests.
 }
