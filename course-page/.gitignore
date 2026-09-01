@@ -1,5 +1,10 @@
+# ---- 1. Variables de entorno ----
 .env
+
+# ---- 2. Archivos binarios compilados localmente ----
 backend/go.mod
 backend/go.sum
+
+# ---- 3. Imagenes o Archivos pesados ----
 backend/images
 backend/files
