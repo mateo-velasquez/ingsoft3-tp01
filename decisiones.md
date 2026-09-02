@@ -133,3 +133,47 @@ Usé Claude (Claude Code, dentro de VS Code) para:
 Seguí los pasos de la guía de la cátedra, y verifiqué cada cosa corriéndola: los builds, el
 `docker compose up`, la prueba de persistencia y la descarga desde el registry. Los diagnósticos que
 figuran en la sección 3 los confirmé mirando los logs y las salidas, no los di por buenos porque sí.
+
+---
+---
+
+# Decisiones — TP3: Planificación y trazabilidad
+
+## 1. Duración del sprint
+
+Elegí **una semana**. El motivo principal es alinear la iteración con el calendario de la materia:
+Las entregas van a ese ritmo, y quiero poder llevar la materia al día, así que me gustaría cumplir con ese compromiso, por eso creo que avanzar semana a semana es la mejor opción para mí.
+
+El segundo motivo es el tamaño del trabajo. Las dos tareas de esta historia son de horas, no de días. Por lo tanto, escribir el esqueleto del workflow y publicar el reporte de tests como artefacto entran cómodas en una semana.
+
+## 2. Límite de trabajo en progreso
+
+Puse **3** en la columna *In Progress*.
+
+La regla de arranque es la cantidad de personas más uno, que trabajando solo da dos. Elegí tres porque en la práctica las esperas que me frenan son dos, no una: 
+- Un pull request esperando que termine el workflow de CI. 
+- La documentación esperando que ese PR mergee para poder describir lo que efectivamente quedó. 
+- El extra es por si necesito margen
+
+
+## 3. Diagnóstico de la historia mal escrita
+
+La historia del ejercicio es una tarea técnica disfrazada de historia. El rol es el propio equipo, no alguien a quien le importe el resultado; la capacidad describe el cómo en vez del qué; y el beneficio es la definición de lo que hace una tabla, no
+un valor observable por nadie. 
+
+**Cómo la reescribiría:** subiendo al valor que la tabla habilita, que en mi app es el registro de alumnos: *«Como visitante quiero registrarme con mi email y contraseña para poder inscribirme a un curso»*, con criterios de aceptación verificables (el alta rechaza emails repetidos; después de registrarme puedo iniciar sesión; una vez logueado puedo inscribirme a un curso y aparece en mi listado). Crear la tabla `usuarios` pasa entonces a ser una **tarea** de esa historia, que es el nivel donde corresponde.
+
+## 4. Problemas encontrados y cómo los resolví
+
+**`gh` no estaba instalado.** La guía arranca con `gh auth status` y en mi máquina el comando no existe. Antes de instalarlo revisé qué partes del práctico lo necesitaban de verdad, y resultó que ninguna: la vista de tablero, el campo Iteration, el límite de la columna y los workflows del Project **sólo existen en la web**, y crear el proyecto desde la web además deja configurado el auto-add que por comando hay que armar aparte. Hice todo por la interfaz y no instalé nada.
+
+**El auto-add no es retroactivo.** Creé el proyecto sin dejar tildada la casilla *Import items from repository*, así que los issues no aparecían solos en el tablero. Encenderlo después no arrastra lo que ya existía: lo activé en `⋯` → *Workflows* → *Auto-add to project* apuntando a este repo y sumé los cinco actuales a mano con *Add item*.
+
+## 5. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) para:
+- Aclarar una duda de arranque: si el TP3 necesitaba un repositorio nuevo o iba sobre el mismo del
+  TP1 y el TP2. La respuesta la confirmé leyendo la sección de entregables de la guía, que lo dice explícitamente.
+- Ordenar la guía en una secuencia de pasos y advertirme las trampas conocidas (el número que va en `Closes` es el de la tarea y no el de la historia; `Closes` sólo cierra si el PR apunta a la rama por defecto; las task-lists no cuentan como jerarquía navegable).
+- Redactar los cuerpos de los issues (la historia con sus criterios de aceptación y el bug de mi app) y ayuda de redacción en este archivo.
+- Redacción de Documentos: De nuevo, los documentos en su contenido son supervisados por mi persona y garantizo que cumplan con lo que piden, y que yo entienda lo que estoy haciendo. Pero la IA fue utilizada para escribir la mayoría de las explicaciones (redacta mucho mejor que yo).
