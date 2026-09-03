@@ -77,7 +77,6 @@ docker compose -f docker-compose.registry.yml up -d
 
 ## Estructura
 
-
 ```
 course-page/
 ├── backend/                 Go + Gin — Dockerfile multi-stage
@@ -90,4 +89,4 @@ course-page/
 ├── docker-compose.registry.yml   las descarga del registry
 └── .env.example             plantilla de variables (el .env real no se versiona)
 ```
-
+Test para validar el cache
