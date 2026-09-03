@@ -1,3 +1,5 @@
+[![CI](https://github.com/mateo-velasquez/ingsoft3-tp01/actions/workflows/ci.yml/badge.svg)](https://github.com/mateo-velasquez/ingsoft3-tp01/actions/workflows/ci.yml)
+
 # ingsoft3-tp01
 
 Repositorio de Ingeniería de Software III. Contiene la aplicación **Course Page** —una plataforma de
