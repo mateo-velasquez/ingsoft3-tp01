@@ -77,6 +77,7 @@ docker compose -f docker-compose.registry.yml up -d
 
 ## Estructura
 
+
 ```
 course-page/
 ├── backend/                 Go + Gin — Dockerfile multi-stage
