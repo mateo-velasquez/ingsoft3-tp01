@@ -89,3 +89,4 @@ course-page/
 ├── docker-compose.registry.yml   las descarga del registry
 └── .env.example             plantilla de variables (el .env real no se versiona)
 ```
+
