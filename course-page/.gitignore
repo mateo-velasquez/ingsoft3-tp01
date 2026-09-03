@@ -1,9 +1,13 @@
 # ---- 1. Variables de entorno ----
 .env
 
-# ---- 2. Archivos binarios compilados localmente ----
-backend/go.mod
-backend/go.sum
+# ---- 2. Binarios compilados localmente ----
+# OJO: go.mod y go.sum NO van acá. Son el manifiesto de dependencias y su
+# lockfile (el equivalente a package.json + package-lock.json): tienen que
+# viajar al repo o el `go mod download` del Dockerfile no tiene qué leer.
+backend/binario-backend
+backend/project
+backend/project.exe
 
 # ---- 3. Imagenes o Archivos pesados ----
 backend/images
