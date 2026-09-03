@@ -9,3 +9,8 @@ func main() {
 	db.StartDbEngine()
 	app.StartRoute()
 }
+
+// TODO: endpoint de salud para el healthcheck del compose
+func endpointDeSalud() {
+	estoNoExiste()
+}
