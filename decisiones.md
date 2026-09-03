@@ -177,3 +177,50 @@ Usé Claude (Claude Code, dentro de VS Code) para:
 - Ordenar la guía en una secuencia de pasos y advertirme las trampas conocidas (el número que va en `Closes` es el de la tarea y no el de la historia; `Closes` sólo cierra si el PR apunta a la rama por defecto; las task-lists no cuentan como jerarquía navegable).
 - Redactar los cuerpos de los issues (la historia con sus criterios de aceptación y el bug de mi app) y ayuda de redacción en este archivo.
 - Redacción de Documentos: De nuevo, los documentos en su contenido son supervisados por mi persona y garantizo que cumplan con lo que piden, y que yo entienda lo que estoy haciendo. Pero la IA fue utilizada para escribir la mayoría de las explicaciones (redacta mucho mejor que yo).
+
+---
+---
+
+## TP4 – CI: Pipelines as Code
+
+### 1. Estructura elegida del pipeline
+
+El workflow (`.github/workflows/ci.yml`) se dispara con dos eventos:
+
+- `pull_request` hacia `main`: es el que hace el trabajo. Verifica ANTES del merge, sobre el resultado propuesto, y es el que alimenta el gate.
+- `push` a `main`: deja constancia de cómo quedó `main` después de cada merge. Es la corrida que lee el badge, y además la que deja el cache que después reutiliza cualquier PR nuevo desde su primera corrida.
+
+Tiene dos jobs, `build-backend` y `build-frontend`, que corren **en paralelo** porque no dependen uno del otro: son dos imágenes independientes, y no tiene sentido que el frontend espere al backend. Cada job corre en su propia máquina limpia y no comparten nada. Si un job necesitara algo del otro habría que declararlo con `needs:` o pasarlo como artefacto.
+
+**Por qué no hay un tercer job para la base de datos.** Mi `docker-compose.yml` levanta tres servicios, y el de la base también tiene su Dockerfile. Pero ese Dockerfile es `FROM mysql:8` más dos `ADD` de archivos `.sql`: no compila ni empaqueta nada. Un job para él sólo detectaría que los `.sql` no viajaron al repo. Preferí no sumarlo y dejar el punto ciego explicitado acá antes que inflar el pipeline.
+
+
+### 2. Qué cachea el pipeline
+
+Lo que se cachea son **las capas de las imágenes Docker**, no dependencias sueltas. Se guardan en el cache de GitHub Actions (`type=gha`), con `mode=max` para conservar también las capas intermedias, y con un `scope` distinto por job (`backend` y `frontend`). El `scope` separado no es opcional: sin él los dos jobs comparten estante y se pisan el cache, y termina reutilizando sólo el último que corrió.
+
+Hizo falta agregar `docker/setup-buildx-action` en los dos jobs, porque el constructor de fábrica de Docker guarda las capas en el disco de la máquina y no sabe exportarlas a un almacén externo.
+
+**Qué se reutiliza en mi caso**: en el backend, la capa de `COPY go.mod go.sum` y la de `RUN go mod download`, porque dependen sólo de esos dos archivos. En el frontend, la de `npm ci`, que depende sólo de `package*.json`. Eso es consecuencia directa de cómo está escrito el Dockerfile del TP2: primero se copian los manifiestos de dependencias y recién después el código. Las capas de `COPY . .` y del compilado se rehacen cada vez
+que cambia el código, que es lo esperable.
+
+**Qué pasa si el cache desaparece**: nada, salvo que el build tarda más. La plataforma puede desalojarlo cuando quiera y tiene límite de tamaño, así que el pipeline tiene que funcionar igual sin él.
+
+### 3. Por qué el pipeline construye con mi Dockerfile
+
+Porque mi app ya se construye de una manera —el Dockerfile del TP2— y el pipeline usa ésa. Si el workflow compilara por su cuenta con `go build` y `npm run build`, tendría **dos definiciones de build** que tarde o temprano divergen, y estaría verificando una compilación distinta de la que después despliego.
+
+El efecto lateral es que el workflow no tiene una sola línea de Go ni de Node: no sabe qué hay adentro de la imagen. El mismo archivo le sirve a cualquier stack.
+
+### 4. Problemas encontrados y cómo los resolví
+
+**`go.mod` y `go.sum` estaban en `.gitignore` y nunca se habían commiteado.** El primer PR falló en el paso del build, en el `COPY go.mod go.sum ./` del Dockerfile. En mi máquina el `docker build` andaba porque los archivos están en el disco; el runner clona el repo, y en el repo no estaban. Los tenía clasificados en `course-page/.gitignore` como "archivos binarios compilados localmente", que es una categoría equivocada: son el manifiesto de dependencias y su lockfile, el equivalente de `package.json` y `package-lock.json`, que en mi frontend sí estaban versionados. Saqué esas dos líneas del `.gitignore` y los commiteé.
+
+### 5. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) para:
+
+- Ordenar la guía en una secuencia de pasos.
+- Diagnosticar por qué falló el primer build. Lo verifiqué yo con `git ls-files`, que confirmó que `go.mod` y `go.sum` no estaban versionados, y con el log del runner, que señalaba el `COPY` que fallaba.
+- Adaptar los ejemplos de la guía (escritos sobre .NET y una app sin subcarpeta) a mi stack Go + React y a mi estructura, donde la app vive en `course-page/`.
+- Ayuda de redacción en este archivo. El contenido lo superviso y lo entiendo; puedo explicar cada decisión.
