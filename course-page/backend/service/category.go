@@ -2,12 +2,11 @@ package service
 
 import (
 	"errors"
-	"project/client"
 	"project/dto"
 	"project/model"
 )
 
-type categoryService struct{}
+type categoryService struct{ repo CategoryRepository }
 
 type categoryServiceInterface interface {
 	InsertCategory(categoryDTO dto.CategoryDTO) (dto.CategoryDTO, error)
@@ -18,7 +17,7 @@ type categoryServiceInterface interface {
 var CategoryService categoryServiceInterface
 
 func init() {
-	CategoryService = &categoryService{}
+	CategoryService = &categoryService{repo: clientCategoryRepository{}}
 }
 
 func (s *categoryService) InsertCategory(categoryDTO dto.CategoryDTO) (dto.CategoryDTO, error) {
@@ -26,7 +25,7 @@ func (s *categoryService) InsertCategory(categoryDTO dto.CategoryDTO) (dto.Categ
 
 	category.CategoryName = categoryDTO.CategoryName
 
-	category = client.InsertCategory(category)
+	category = s.repo.InsertCategory(category)
 	if category.CategoryName == "" {
 		return categoryDTO, errors.New("category almost exist")
 	}
@@ -42,7 +41,7 @@ func (s *categoryService) GetCategoryById(id int) (dto.CategoryDTO, error) {
 		return categoryDTO, errors.New("ID not found")
 	}
 
-	category = client.GetCategoryById(id)
+	category = s.repo.GetCategoryById(id)
 
 	if category.IDCategory == 0 {
 		return categoryDTO, errors.New("category not found")
@@ -55,7 +54,7 @@ func (s *categoryService) GetCategoryById(id int) (dto.CategoryDTO, error) {
 }
 
 func (s *categoryService) GetCategories() (dto.CategoriesDTO, error) {
-	var categories model.Categories = client.GetCategories()
+	var categories model.Categories = s.repo.GetCategories()
 	var categoriesDTO dto.CategoriesDTO
 	var categoryDTO dto.CategoryDTO
 

@@ -2,12 +2,11 @@ package service
 
 import (
 	"errors"
-	"project/client"
 	"project/dto"
 	"project/model"
 )
 
-type courseService struct{}
+type courseService struct{ repo CourseRepository }
 
 type courseServiceInterface interface {
 	InsertCourse(courseDTO dto.CourseDTO) (dto.CourseDTO, error)
@@ -21,7 +20,7 @@ type courseServiceInterface interface {
 var CourseService courseServiceInterface
 
 func init() {
-	CourseService = &courseService{}
+	CourseService = &courseService{repo: clientCourseRepository{}}
 }
 
 func (s *courseService) GetCourseById(id int) (dto.CourseDTO, error) {
@@ -32,7 +31,7 @@ func (s *courseService) GetCourseById(id int) (dto.CourseDTO, error) {
 		return courseDTO, errors.New("ID not found")
 	}
 
-	course = client.GetCourseById(id)
+	course = s.repo.GetCourseById(id)
 
 	if course.IDCourse == 0 {
 		return courseDTO, errors.New("course not found")
@@ -63,7 +62,7 @@ func (s *courseService) GetCourseById(id int) (dto.CourseDTO, error) {
 }
 
 func (s *courseService) GetCourses() (dto.CoursesDTO, error) {
-	var courses model.Courses = client.GetCourses()
+	var courses model.Courses = s.repo.GetCourses()
 	var coursesDTO dto.CoursesDTO
 
 	for _, course := range courses {
@@ -106,7 +105,7 @@ func (s *courseService) SearchCourses(query string, categoryIDs []int) (dto.Cour
 		return coursesDTO, errors.New("course not found")
 	}
 
-	courses = client.SearchCourses(query, categoryIDs)
+	courses = s.repo.SearchCourses(query, categoryIDs)
 
 	for _, course := range courses {
 		var courseDTO dto.CourseDTO
@@ -151,7 +150,7 @@ func (s *courseService) InsertCourse(courseDTO dto.CourseDTO) (dto.CourseDTO, er
 	course.Rating = courseDTO.Rating
 
 	for _, categoryName := range courseDTO.Categories {
-		category := client.GetCategoryByName(categoryName)
+		category := s.repo.GetCategoryByName(categoryName)
 
 		if category.IDCategory == 0 {
 			return courseDTO, errors.New("category not found")
@@ -161,7 +160,7 @@ func (s *courseService) InsertCourse(courseDTO dto.CourseDTO) (dto.CourseDTO, er
 
 	}
 
-	course = client.InsertCourse(course)
+	course = s.repo.InsertCourse(course)
 
 	courseDTO.IDCourse = course.IDCourse
 
@@ -173,14 +172,14 @@ func (s *courseService) InsertCourse(courseDTO dto.CourseDTO) (dto.CourseDTO, er
 }
 
 func (s *courseService) PutCourseById(courseDTO dto.CourseDTO) (dto.CourseDTO, error) {
-	course := client.GetCourseById(courseDTO.IDCourse)
+	course := s.repo.GetCourseById(courseDTO.IDCourse)
 	course.IDCourse = courseDTO.IDCourse
 
 	if course.IDCourse <= 0 {
 		return courseDTO, errors.New("course not found")
 	}
 
-	courseCheck := client.GetCourseByName(course.CourseName)
+	courseCheck := s.repo.GetCourseByName(course.CourseName)
 
 	if courseDTO.IDCourse != courseCheck.IDCourse {
 		return courseDTO, errors.New("there is already a course with this name")
@@ -205,7 +204,7 @@ func (s *courseService) PutCourseById(courseDTO dto.CourseDTO) (dto.CourseDTO, e
 
 	var newCategories model.Categories
 	for _, categoryName := range courseDTO.Categories {
-		category := client.GetCategoryByName(categoryName)
+		category := s.repo.GetCategoryByName(categoryName)
 
 		if category.IDCategory <= 0 {
 			return courseDTO, errors.New("category not found")
@@ -214,7 +213,7 @@ func (s *courseService) PutCourseById(courseDTO dto.CourseDTO) (dto.CourseDTO, e
 		newCategories = append(newCategories, category)
 	}
 
-	course = client.PutCourseById(course, newCategories)
+	course = s.repo.PutCourseById(course, newCategories)
 
 	if course.IDCourse < 0 {
 		return courseDTO, errors.New("error updating course")
@@ -224,13 +223,13 @@ func (s *courseService) PutCourseById(courseDTO dto.CourseDTO) (dto.CourseDTO, e
 }
 
 func (s *courseService) DeleteCourseById(id int) error {
-	course := client.GetCourseById(id)
+	course := s.repo.GetCourseById(id)
 
 	if course.IDCourse <= 0 {
 		return errors.New("course not found")
 	}
 
-	err := client.DeleteCourseById(course)
+	err := s.repo.DeleteCourseById(course)
 
 	return err
 }

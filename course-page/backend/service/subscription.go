@@ -2,12 +2,11 @@ package service
 
 import (
 	"errors"
-	"project/client"
 	"project/dto"
 	"project/model"
 )
 
-type subscriptionService struct{}
+type subscriptionService struct{ repo SubscriptionRepository }
 
 type subscriptionServiceInterface interface {
 	InsertSubscription(subscriptionDTO dto.SubscriptionDTO) (dto.SubscriptionDTO, error)
@@ -22,7 +21,7 @@ type subscriptionServiceInterface interface {
 var SubscriptionService subscriptionServiceInterface
 
 func init() {
-	SubscriptionService = &subscriptionService{}
+	SubscriptionService = &subscriptionService{repo: clientSubscriptionRepository{}}
 }
 
 func (s *subscriptionService) InsertSubscription(subscriptionDTO dto.SubscriptionDTO) (dto.SubscriptionDTO, error) {
@@ -47,7 +46,7 @@ func (s *subscriptionService) InsertSubscription(subscriptionDTO dto.Subscriptio
 	}
 
 	//Llamamos al cliente para que interactua con la base de datos:
-	subscription = client.InsertSubscription(subscription)
+	subscription = s.repo.InsertSubscription(subscription)
 
 	if subscription.IDSubscription == -1 {
 		return subscriptionDTO, errors.New("error creating subscription: Subscription allready exists")
@@ -64,7 +63,7 @@ func (s *subscriptionService) InsertSubscription(subscriptionDTO dto.Subscriptio
 
 func (s *subscriptionService) GetSubscriptions() (dto.SubscriptionsDTO, error) {
 	var subscriptionsDTO dto.SubscriptionsDTO
-	var subscriptions model.Subscriptions = client.GetSubscriptions()
+	var subscriptions model.Subscriptions = s.repo.GetSubscriptions()
 
 	for _, subscription := range subscriptions {
 		var subscriptionDTO dto.SubscriptionDTO
@@ -91,7 +90,7 @@ func (s *subscriptionService) GetSubscriptionById(id int) (dto.SubscriptionDTO, 
 		return subscriptionDTO, errors.New("ID not found")
 	}
 
-	subscription = client.GetSubscriptionById(id)
+	subscription = s.repo.GetSubscriptionById(id)
 
 	if subscription.IDSubscription == 0 {
 		return subscriptionDTO, errors.New("user not found")
@@ -111,7 +110,7 @@ func (s *subscriptionService) GetSubscriptionById(id int) (dto.SubscriptionDTO, 
 
 func (s *subscriptionService) GetSubscriptionsByUserId(userId int) (dto.SubscriptionsDTO, error) {
 	var subscriptionsDTO dto.SubscriptionsDTO
-	var subscriptions model.Subscriptions = client.GetSubscriptionsByUserId(userId)
+	var subscriptions model.Subscriptions = s.repo.GetSubscriptionsByUserId(userId)
 
 	for _, subscription := range subscriptions {
 		var subscriptionDTO dto.SubscriptionDTO
@@ -132,7 +131,7 @@ func (s *subscriptionService) GetSubscriptionsByUserId(userId int) (dto.Subscrip
 
 func (s *subscriptionService) GetSubscriptionsByCourseId(courseId int) (dto.SubscriptionsDTO, error) {
 	var subscriptionsDTO dto.SubscriptionsDTO
-	var subscriptions model.Subscriptions = client.GetSubscriptionsByCourseId(courseId)
+	var subscriptions model.Subscriptions = s.repo.GetSubscriptionsByCourseId(courseId)
 
 	for _, subscription := range subscriptions {
 		var subscriptionDTO dto.SubscriptionDTO
@@ -165,7 +164,7 @@ func (s *subscriptionService) PutRating(ratingDto dto.RatingDTO) (dto.RatingDTO,
 	subscription.IDSubscription = ratingDto.IDSubscription
 	subscription.IndividualRating = ratingDto.IndividualRating
 
-	subscription = client.PutRating(subscription)
+	subscription = s.repo.PutRating(subscription)
 
 	if subscription.IDSubscription == -1 {
 		return ratingDto, errors.New("error finding the Subscription")
@@ -188,7 +187,7 @@ func (s *subscriptionService) PutComment(commentDto dto.CommentDTO) (dto.Comment
 	subscription.IDSubscription = commentDto.IDSubscription
 	subscription.Comment = commentDto.Comment
 
-	subscription = client.PutComment(subscription)
+	subscription = s.repo.PutComment(subscription)
 
 	if subscription.IDSubscription == -1 {
 		return commentDto, errors.New("error finding the Subscription")
