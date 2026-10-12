@@ -10,7 +10,13 @@ COPY . .
 
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/binario-backend .
 
-# ---- Etapa 2: runtime (imagen mínima, sin compilador) ----
+# ---- Etapa 2: tests (parte del build: ya tiene el compilador y el código) ----
+# Los tests corren con "docker run", no al construir; scripts/coverage.sh falla
+# si la cobertura de la lógica queda por debajo del umbral.
+FROM build AS test
+ENTRYPOINT ["sh", "scripts/coverage.sh"]
+
+# ---- Etapa 3: runtime (imagen mínima, sin compilador) ----
 FROM alpine:3.21 AS final
 WORKDIR /app
 
