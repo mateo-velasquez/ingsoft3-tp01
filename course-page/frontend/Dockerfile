@@ -11,8 +11,6 @@ COPY frontend-lms/ ./
 RUN npm run build
 
 # ---- Etapa 2: tests (parte del build: ya tiene Node y las dependencias) ----
-# Corren con "docker run", no al construir; vitest falla si la cobertura
-# queda por debajo del umbral de vite.config.js.
 FROM build AS test
 ENTRYPOINT ["npm", "run", "test:ci"]
 
