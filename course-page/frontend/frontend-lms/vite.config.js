@@ -15,6 +15,7 @@ export default defineConfig({
         'src/services/courseService.js',
         'src/services/subscriptionService.js',
         'src/services/fileService.js',
+        'src/services/ratingService.js',
       ],
       reporter: ['text', 'html', 'lcov', 'json-summary'],
       thresholds: {
