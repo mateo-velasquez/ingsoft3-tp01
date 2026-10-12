@@ -17,3 +17,7 @@ Thumbs.db
 
 # Carpeta de ayuda
 z_helps
+# artefactos de cobertura
+coverage/
+coverage.out
+coveragereport/
