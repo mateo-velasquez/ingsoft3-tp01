@@ -2,12 +2,11 @@ package service
 
 import (
 	"errors"
-	"project/client"
 	"project/dto"
 	"project/model"
 )
 
-type imageService struct{}
+type imageService struct{ repo ImageRepository }
 
 type imageServiceInterface interface {
 	InsertImage(imageDTO dto.ImageDTO) (dto.ImageDTO, error)
@@ -19,7 +18,7 @@ type imageServiceInterface interface {
 var ImageService imageServiceInterface
 
 func init() {
-	ImageService = &imageService{}
+	ImageService = &imageService{repo: clientImageRepository{}}
 }
 
 func (s *imageService) InsertImage(imageDTO dto.ImageDTO) (dto.ImageDTO, error) {
@@ -28,7 +27,7 @@ func (s *imageService) InsertImage(imageDTO dto.ImageDTO) (dto.ImageDTO, error) 
 
 	image.ImagePath = imageDTO.ImagePath
 
-	image = client.InsertImage(image)
+	image = s.repo.InsertImage(image)
 
 	if image.ImageId < 0 {
 		return imageDTO, errors.New("could not insert image")
@@ -41,7 +40,7 @@ func (s *imageService) GetImageById(id int) (dto.ImageDTO, error) {
 	var image model.Image
 	var imageDTO dto.ImageDTO
 
-	image = client.GetImageById(id)
+	image = s.repo.GetImageById(id)
 
 	if image.ImageId == 0 {
 		return imageDTO, errors.New("image not found")
@@ -58,11 +57,11 @@ func (s *imageService) GetImageById(id int) (dto.ImageDTO, error) {
 }
 
 func (s *imageService) GetIdMayor() (id int) {
-	return client.GetIdMayor()
+	return s.repo.GetIdMayor()
 }
 
 func (s *imageService) GetImages() (dto.ImagesDTO, error) {
-	var images model.Images = client.GetImages()
+	var images model.Images = s.repo.GetImages()
 	var imagesDTO dto.ImagesDTO
 
 	for _, image := range images {

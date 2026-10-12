@@ -97,3 +97,59 @@ func (clientSubscriptionRepository) PutRating(s model.Subscription) model.Subscr
 func (clientSubscriptionRepository) PutComment(s model.Subscription) model.Subscription {
 	return client.PutComment(s)
 }
+
+type UserRepository interface {
+	InsertUser(user model.User) model.User
+	GetUsers() model.Users
+	GetUserById(id int) model.User
+	GetUserByEmail(email string) model.User
+	UserLogin(email string) model.User
+	GetSubscriptionsByUserId(userId int) model.Subscriptions
+}
+
+type clientUserRepository struct{}
+
+func (clientUserRepository) InsertUser(u model.User) model.User { return client.InsertUser(u) }
+func (clientUserRepository) GetUsers() model.Users              { return client.GetUsers() }
+func (clientUserRepository) GetUserById(id int) model.User      { return client.GetUserById(id) }
+func (clientUserRepository) GetUserByEmail(email string) model.User {
+	return client.GetUserByEmail(email)
+}
+func (clientUserRepository) UserLogin(email string) model.User { return client.UserLogin(email) }
+func (clientUserRepository) GetSubscriptionsByUserId(id int) model.Subscriptions {
+	return client.GetSubscriptionsByUserId(id)
+}
+
+type FileRepository interface {
+	InsertFile(file model.File) model.File
+	GetFileById(id int) model.File
+	GetFiles() model.Files
+	GetFilesBySubscriptionId(subscriptionId int) model.Files
+	GetFilesByCourseId(courseId int) model.Files
+}
+
+type clientFileRepository struct{}
+
+func (clientFileRepository) InsertFile(f model.File) model.File { return client.InsertFile(f) }
+func (clientFileRepository) GetFileById(id int) model.File      { return client.GetFileById(id) }
+func (clientFileRepository) GetFiles() model.Files              { return client.GetFiles() }
+func (clientFileRepository) GetFilesBySubscriptionId(id int) model.Files {
+	return client.GetFilesBySubscriptionId(id)
+}
+func (clientFileRepository) GetFilesByCourseId(id int) model.Files {
+	return client.GetFilesByCourseId(id)
+}
+
+type ImageRepository interface {
+	InsertImage(image model.Image) model.Image
+	GetImageById(id int) model.Image
+	GetImages() model.Images
+	GetIdMayor() int
+}
+
+type clientImageRepository struct{}
+
+func (clientImageRepository) InsertImage(i model.Image) model.Image { return client.InsertImage(i) }
+func (clientImageRepository) GetImageById(id int) model.Image       { return client.GetImageById(id) }
+func (clientImageRepository) GetImages() model.Images               { return client.GetImages() }
+func (clientImageRepository) GetIdMayor() int                       { return client.GetIdMayor() }
