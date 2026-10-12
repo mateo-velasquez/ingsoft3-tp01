@@ -59,6 +59,64 @@ describe('authService', () => {
     });
   });
 
+  describe('session helpers', () => {
+    it('logout removes the token and the user', () => {
+      storage.setItem('token', 'tok');
+      storage.setItem('user', JSON.stringify({ id: 1 }));
+
+      authService.logout();
+
+      expect(storage.getItem('token')).toBeNull();
+      expect(storage.getItem('user')).toBeNull();
+    });
+
+    it.each([
+      ['there is a token', 'tok', true],
+      ['there is no token', undefined, false],
+    ])('isAuthenticated depends on the token: %s', (_case, token, expected) => {
+      if (token !== undefined) storage.setItem('token', token);
+
+      expect(authService.isAuthenticated()).toBe(expected);
+    });
+
+    it('getToken returns the stored token', () => {
+      storage.setItem('token', 'tok');
+
+      expect(authService.getToken()).toBe('tok');
+    });
+  });
+
+  describe('isTeacher', () => {
+    it.each([
+      ['there is no user', undefined],
+      ['the user has no id', JSON.stringify({ name: 'Ana' })],
+    ])('is false without asking the server when %s', async (_case, stored) => {
+      if (stored !== undefined) storage.setItem('user', stored);
+
+      await expect(authService.isTeacher()).resolves.toBe(false);
+      expect(apiRequest).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['the server says it is a teacher', { is_teacher: true }, true],
+      ['the server says it is not a teacher', { is_teacher: false }, false],
+      ['the answer has no is_teacher field', {}, false],
+    ])('asks the server and returns the answer when %s', async (_case, response, expected) => {
+      storage.setItem('user', JSON.stringify({ id: 4 }));
+      vi.mocked(apiRequest).mockResolvedValue(response);
+
+      await expect(authService.isTeacher()).resolves.toBe(expected);
+      expect(apiRequest).toHaveBeenCalledWith('/user/4/is-teacher');
+    });
+
+    it('is false when the request fails', async () => {
+      storage.setItem('user', JSON.stringify({ id: 4 }));
+      vi.mocked(apiRequest).mockRejectedValue(new Error('network down'));
+
+      await expect(authService.isTeacher()).resolves.toBe(false);
+    });
+  });
+
   describe('login', () => {
     it('calls /login with the credentials and stores the token and the user', async () => {
       const response = { token: 'tok', user: { id: 7 } };
