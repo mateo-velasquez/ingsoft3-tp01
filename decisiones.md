@@ -234,22 +234,29 @@ Usé Claude (Claude Code, dentro de VS Code) para:
 
 **Backend (Go):** la capa de servicios (`service/`: `category`, `course`, `subscription`, `user`, `file` e `image`). Es donde viven las reglas de negocio: validación de IDs, búsqueda sin criterios, hash y verificación de contraseñas, rol por defecto de una suscripción, rango del rating, detección de duplicados y categoría inexistente al crear un curso.
 
-**Frontend (React):** los servicios de `src/services/` (`api.js`, `authService.js`, `courseService.js`, `subscriptionService.js` y `fileService.js`). Concentran la lógica que no es visual: cómo se arma cada pedido a la API, el manejo de errores HTTP, el token y la sesión guardada en `localStorage`.
+**Frontend (React):** los servicios de `src/services/` (`api.js`, `authService.js`, `courseService.js`, `subscriptionService.js` y `fileService.js` y `ratingService.js`). Concentran la lógica que no es visual: cómo se arma cada pedido a la API, el manejo de errores HTTP, el token y la sesión guardada en `localStorage`.
 
 Los componentes React (`.jsx`) no los testeé: son presentación, y testearlos pide `jsdom` y Testing Library, que la guía deja como opcional. La UI completa se verifica end-to-end en el TP7.
 
-Resultado: **69 tests en el backend** y **53 ejecuciones en el frontend** (5 archivos de test).
+Resultado: **69 tests en el backend** y **90 ejecuciones en el frontend** (6 archivos de test).
 
 ### 2. Umbral de coverage
 
 | | Métrica del umbral | Umbral | Cobertura hoy |
 |---|---|---|---|
 | Backend | Sentencias (`go tool cover`) | **80%** | **99.3%** sobre la lógica |
-| Frontend | Sentencias, ramas, funciones y líneas (vitest) | **80%** en las cuatro | 98.78% sentencias · **94.73% ramas** · 100% funciones · 98.78% líneas |
+| Frontend | Sentencias, ramas, funciones y líneas (vitest) | **80%** en las cuatro | 99.19% sentencias · **96.72% ramas** · 100% funciones · 99.18% líneas |
 
-**Ramas:** el frontend la mide y la reporta (94.73%). Go no expone cobertura de ramas de forma nativa, así que el umbral del backend es sobre sentencias. Cobertura de ramas del backend: PENDIENTE.
+**Ramas:** el frontend la mide y la reporta (96.72%). Go no expone cobertura de ramas de forma nativa, así que el umbral del backend es sobre sentencias. Para saber igual cuántas ramas recorren mis tests medí la capa de servicios con `gobco` (herramienta externa, que no forma parte del pipeline): **96 de 104 ramas, 92.3%**. Las 8 sin recorrer son:
 
-**Por qué 80.** Elegí 80% porque es el valor de referencia que más se usa en la industria como piso de cobertura, y porque lo puedo sostener con mi medición real: la lógica de mi app hoy mide 99.3% (backend) y 98.78% (frontend), así que el 80% es alcanzable y deja unos 19 puntos de margen para refactors sin que el gate se rompa por cambios menores. A la vez es lo bastante exigente como para frenar código nuevo sin tests: para llevar el backend de 99.3% a menos de 80% hacen falta unas 210 sentencias sin cubrir, y en el frontend unas 20. Tiene un límite que reconozco: como estoy muy por encima, el umbral no frena una caída chica sino la entrada de código nuevo sin tests en cantidad. Si quisiera hacerlo más sensible lo subiría a ~90%, que sigue siendo alcanzable con la suite actual. Para que el número cubra más que la lógica tendría que testear `client/` y `controller/`, que son tests de integración con una base real, y eso queda para el TP7.
+- **Caminos de falla que dependen de la base o de bcrypt (4):** `course.IDCourse < 0` tras crear y tras actualizar un curso (`course.go`, la misma situación de la sección 8), y el `err != nil` de `bcrypt.GenerateFromPassword` en `user.go`, que sólo falla con contraseñas de más de 72 bytes.
+- **Huecos reales de la suite (4):** el camino feliz de `InsertCategory` (hoy sólo pruebo el caso «ya existe»), la imagen de un curso que no se encuentra al listar y al buscar por ID (`err == nil` en `course.go`, 2 ramas), y las validaciones de nombre vacío y de rating fuera de rango al editar un curso.
+
+El umbral de sentencias no los detecta porque cada una es una o dos sentencias, pero son los candidatos para los próximos tests, empezando por el camino feliz de `InsertCategory`.
+
+**Link de la corrida verde con el resumen y los reportes descargables (backend y frontend):** https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/38295165066
+
+**Por qué 80.** Elegí 80% porque es el valor de referencia que más se usa en la industria como piso de cobertura, y porque lo puedo sostener con mi medición real: la lógica de mi app hoy mide 99.3% (backend) y 99.19% (frontend), así que el 80% es alcanzable y deja unos 19 puntos de margen para refactors sin que el gate se rompa por cambios menores. A la vez es lo bastante exigente como para frenar código nuevo sin tests: para llevar el backend de 99.3% a menos de 80% hacen falta unas 210 sentencias sin cubrir, y en el frontend unas 20. Tiene un límite que reconozco: como estoy muy por encima, el umbral no frena una caída chica sino la entrada de código nuevo sin tests en cantidad. Si quisiera hacerlo más sensible lo subiría a ~90%, que sigue siendo alcanzable con la suite actual. Para que el número cubra más que la lógica tendría que testear `client/` y `controller/`, que son tests de integración con una base real, y eso queda para el TP7.
 
 **Cómo frena.** En el frontend, `coverage.thresholds` de vitest: si baja de 80, `vitest` sale con error. En el backend, el script `course-page/backend/scripts/coverage.sh` calcula el total con `go tool cover -func` y hace `exit 1` si queda por debajo. Los dos corren **adentro del contenedor, en una etapa `test` de cada Dockerfile**, así que el job se pone en rojo y el *required check* del TP4 bloquea el merge.
 
@@ -292,7 +299,12 @@ En el frontend no hizo falta refactorizar: `apiRequest` ya está separado en `ap
 
 La app ya tenía lógica real (validaciones, hash de contraseñas, roles, rating), así que no agregué reglas para tener qué testear.
 
-Funcionalidad agregada para la demostración del freno: PENDIENTE.
+Para la demostración del freno agregué dos funcionalidades chicas en el frontend, ambas con la lógica pura de un servicio, una por cada Pull Request:
+
+- **`ratingService.js` (PR #24):** resumen de las valoraciones de un curso. Valida que un rating esté entre 1 y 5 (un 0 significa «sin calificar»), calcula el promedio redondeado a un decimal, cuenta las valoraciones por estrella, asigna una etiqueta («Excelente», «Muy bueno», etc.) y sólo muestra el resumen si hay al menos 3 valoraciones.
+- **`courseFilterService.js` (PR #25):** filtra los cursos por categoría, texto y rango de precio, los ordena y los pagina.
+
+Las dos se sumaron a `coverage.include` de `vite.config.js`, porque con una lista de inclusión un archivo nuevo no entra a la medición solo. Se agregaron sin tests a propósito, para que el código compile y los tests existentes sigan en verde y aun así la cobertura baje del umbral.
 
 ### 7. Stack utilizado (Go + vitest)
 
@@ -321,11 +333,31 @@ Abrí el reporte HTML (`coverage.html`) y encontré una línea en rojo en `servi
 
 ### 9. Pull Request bloqueado
 
-PENDIENTE.
+En el **PR #24** agregué `ratingService.js` sin tests. El código compilaba, el lint pasaba y los 53 tests existentes estaban en verde, pero el job **`build-frontend` se puso en rojo** por cobertura y, al ser un *required check*, el botón de merge quedó deshabilitado. `build-backend` siguió en verde.
+
+El log de vitest lo dice con el número exacto, métrica por métrica (el archivo nuevo medía 0%):
+
+| Métrica | Cobertura | Umbral |
+|---|---|---|
+| Líneas | 66.39% | 80% |
+| Sentencias | 65.32% | 80% |
+| Funciones | 70.58% | 80% |
+| Ramas | 59.01% | 80% |
+
+Las cuatro fallaron, con mensajes del tipo `ERROR: Coverage for lines (66.39%) does not meet global threshold (80%)`.
+
+Para arreglarlo escribí `ratingService.test.js` y no toqué el umbral ni la lista de archivos medidos. Cubre `isValidRating` y `getRatingLabel` con `it.each`, el promedio con valores inválidos mezclados, el resumen completo y vacío, y `getCourseRatingSummary` con un doble de `subscriptionService` (`vi.mock`), incluido el caso en que la petición falla. Con eso el frontend volvió a 99.19% de sentencias y 96.72% de ramas, el job quedó en verde y mergeé el PR.
+
+El **PR #25** repite el problema a propósito y no se arregla: agrega `courseFilterService.js` sin tests y la cobertura del frontend baja a 71.59% de líneas, 71.09% de sentencias, 75.55% de funciones y 59% de ramas. Queda **abierto y en rojo** hasta la defensa, con el merge bloqueado por el check requerido.
 
 ### 10. Links que prueban cada decisión
 
-PENDIENTE.
+| Qué prueba | Link |
+|---|---|
+| Resumen de cobertura y reporte descargable (backend y frontend) | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/38295165066 |
+| Corrida roja por umbral, con el número en el log | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/38278531972 |
+| Secuencia rojo → tests → verde → merge (PR mergeado) | https://github.com/mateo-velasquez/ingsoft3-tp01/pull/24 |
+| Freno vigente, en rojo (PR abierto) | https://github.com/mateo-velasquez/ingsoft3-tp01/pull/25 |
 
 ### 11. Problemas encontrados y cómo los resolví
 
