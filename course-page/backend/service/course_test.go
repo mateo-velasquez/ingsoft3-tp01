@@ -8,9 +8,13 @@ import (
 )
 
 type fakeCourseRepo struct {
-	courseById     model.Course
-	categoryByName model.Category
-	searchResult   model.Courses
+	courseByName      model.Course
+	allCourses        model.Courses
+	puts              int
+	lastPutCategories model.Categories
+	courseById        model.Course
+	categoryByName    model.Category
+	searchResult      model.Courses
 
 	searchCalls int
 	lastQuery   string
@@ -20,8 +24,8 @@ type fakeCourseRepo struct {
 }
 
 func (f *fakeCourseRepo) GetCourseById(int) model.Course      { return f.courseById }
-func (f *fakeCourseRepo) GetCourseByName(string) model.Course { return model.Course{} }
-func (f *fakeCourseRepo) GetCourses() model.Courses           { return nil }
+func (f *fakeCourseRepo) GetCourseByName(string) model.Course { return f.courseByName }
+func (f *fakeCourseRepo) GetCourses() model.Courses           { return f.allCourses }
 func (f *fakeCourseRepo) SearchCourses(q string, _ []int) model.Courses {
 	f.searchCalls++
 	f.lastQuery = q
@@ -32,7 +36,11 @@ func (f *fakeCourseRepo) InsertCourse(c model.Course) model.Course {
 	c.IDCourse = 1
 	return c
 }
-func (f *fakeCourseRepo) PutCourseById(c model.Course, _ model.Categories) model.Course { return c }
+func (f *fakeCourseRepo) PutCourseById(c model.Course, cats model.Categories) model.Course {
+	f.puts++
+	f.lastPutCategories = cats
+	return c
+}
 func (f *fakeCourseRepo) DeleteCourseById(c model.Course) error {
 	f.deletes++
 	f.lastDeleted = c

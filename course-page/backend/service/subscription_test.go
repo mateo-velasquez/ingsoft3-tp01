@@ -9,6 +9,10 @@ import (
 )
 
 type fakeSubscriptionRepo struct {
+	all, byUser, byCourse model.Subscriptions
+	byId                  model.Subscription
+	commentID             int
+	comments              []model.Subscription
 	// ID returned by InsertSubscription / PutRating; if left at zero, 10 is used for inserts
 	insertedID int
 	ratingID   int
@@ -25,12 +29,10 @@ func (f *fakeSubscriptionRepo) InsertSubscription(s model.Subscription) model.Su
 	}
 	return s
 }
-func (f *fakeSubscriptionRepo) GetSubscriptions() model.Subscriptions { return nil }
-func (f *fakeSubscriptionRepo) GetSubscriptionById(int) model.Subscription {
-	return model.Subscription{}
-}
-func (f *fakeSubscriptionRepo) GetSubscriptionsByUserId(int) model.Subscriptions   { return nil }
-func (f *fakeSubscriptionRepo) GetSubscriptionsByCourseId(int) model.Subscriptions { return nil }
+func (f *fakeSubscriptionRepo) GetSubscriptions() model.Subscriptions              { return f.all }
+func (f *fakeSubscriptionRepo) GetSubscriptionById(int) model.Subscription         { return f.byId }
+func (f *fakeSubscriptionRepo) GetSubscriptionsByUserId(int) model.Subscriptions   { return f.byUser }
+func (f *fakeSubscriptionRepo) GetSubscriptionsByCourseId(int) model.Subscriptions { return f.byCourse }
 func (f *fakeSubscriptionRepo) PutRating(s model.Subscription) model.Subscription {
 	f.ratings = append(f.ratings, s)
 	if f.ratingID != 0 {
@@ -38,7 +40,13 @@ func (f *fakeSubscriptionRepo) PutRating(s model.Subscription) model.Subscriptio
 	}
 	return s
 }
-func (f *fakeSubscriptionRepo) PutComment(s model.Subscription) model.Subscription { return s }
+func (f *fakeSubscriptionRepo) PutComment(s model.Subscription) model.Subscription {
+	f.comments = append(f.comments, s)
+	if f.commentID != 0 {
+		s.IDSubscription = f.commentID
+	}
+	return s
+}
 
 func TestInsertSubscription_InvalidCourseOrUser_IsRejected(t *testing.T) {
 	cases := []struct {

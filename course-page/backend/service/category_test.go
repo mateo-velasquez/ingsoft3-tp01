@@ -10,6 +10,7 @@ import (
 // fakeCategoryRepo is a test double: it returns whatever the test configures
 // and counts the calls, so the test can verify the interaction.
 type fakeCategoryRepo struct {
+	all          model.Categories
 	byId         model.Category
 	inserted     model.Category
 	getByIdCalls int
@@ -21,7 +22,7 @@ func (f *fakeCategoryRepo) GetCategoryById(int) model.Category {
 	return f.byId
 }
 func (f *fakeCategoryRepo) GetCategoryByName(string) model.Category { return model.Category{} }
-func (f *fakeCategoryRepo) GetCategories() model.Categories         { return nil }
+func (f *fakeCategoryRepo) GetCategories() model.Categories         { return f.all }
 
 func TestGetCategoryById_InvalidID_IsRejectedWithoutQueryingTheDB(t *testing.T) {
 	cases := []struct {
