@@ -311,7 +311,13 @@ Abrí el reporte HTML (`coverage.html`) y encontré una línea en rojo en `servi
 
 - **Qué línea es:** línea 219, el `return courseDTO, errors.New("error updating course")` dentro del `if course.IDCourse < 0` de `PutCourseById`. Ese `if` se evalúa justo después de llamar al repositorio y en todos mis tests da falso, porque el doble siempre devuelve el curso con su ID original.
 - **Qué entrada la recorrería:** que el repositorio devuelva el curso con `IDCourse = -1`. En la app real es lo que hace `client.PutCourseById` cuando falla cualquier paso de la actualización (la edición, el borrado de las relaciones viejas o la inserción de una nueva).
-- **Qué decidí:** PENDIENTE.
+- **Qué decidí:** **no agregar el test.** Lo dejo documentado como deuda técnica, por estas razones:
+  1. **No cambia el resultado del gate.** Esa línea es 1 de las 871 sentencias medidas (el 0.1%): con el test el backend pasaría de 99.3% a 99.4%, muy lejos del umbral de 80%. El número no es el motivo de un test, pero tampoco es una urgencia.
+  2. **El camino depende de un fallo real de la base.** El `-1` lo devuelve `client.PutCourseById` cuando se cae la transacción (la edición, el borrado de las relaciones viejas o la inserción de una nueva). Con un doble sólo podría comprobar que el servicio reacciona a un valor que yo mismo le configuré; no estaría probando que la actualización falla bien contra una base de datos de verdad. Esa verificación corresponde a un test de integración, que dejo para el TP7.
+  3. **Elegí gastar los tests donde un bug duele más.** Los tests de esta suite protegen reglas de negocio con riesgo concreto (la autenticación, el rol de la suscripción, los duplicados, las validaciones de entrada). El caso de error de una actualización es un camino de falla poco frecuente que además ya está acotado: el servicio no devuelve un éxito falso, devuelve un error.
+  4. **Es el primer test que agregaría si subo el umbral o si sumo tests de integración**, porque es la rama más clara que quedó sin recorrer.
+
+  Decidir no agregarlo no es dejarlo sin criterio: abrí el reporte, identifiqué la línea, entendí qué la dispara y evalué el costo y el beneficio de cubrirla.
 
 ### 9. Pull Request bloqueado
 
