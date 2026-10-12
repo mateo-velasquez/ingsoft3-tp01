@@ -3,13 +3,13 @@
 # business logic is below the threshold.
 #
 # COVERAGE_DIR        where the reports are written (default: coverage)
-# COVERAGE_THRESHOLD  minimum percentage of statements (default: 70)
+# COVERAGE_THRESHOLD  minimum percentage of statements (default: 80)
 set -eu
 
 export CGO_ENABLED=0
 
 OUT="${COVERAGE_DIR:-coverage}"
-THRESHOLD="${COVERAGE_THRESHOLD:-70}"
+THRESHOLD="${COVERAGE_THRESHOLD:-80}"
 
 # What stays OUT of the measurement. It is an exclusion list (not an inclusion
 # list) on purpose: any new package or file enters the count by itself, so
