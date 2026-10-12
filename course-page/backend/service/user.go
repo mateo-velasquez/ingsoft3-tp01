@@ -2,14 +2,13 @@ package service
 
 import (
 	"errors"
-	"project/client"
 	"project/dto"
 	"project/model"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
-type userService struct{}
+type userService struct{ repo UserRepository }
 
 type userServiceInterface interface {
 	InsertUser(userDTO dto.UserDTO) (dto.UserDTO, error)
@@ -23,7 +22,7 @@ type userServiceInterface interface {
 var UserService userServiceInterface
 
 func init() {
-	UserService = &userService{}
+	UserService = &userService{repo: clientUserRepository{}}
 }
 
 func (s *userService) InsertUser(userDTO dto.UserDTO) (dto.UserDTO, error) {
@@ -45,7 +44,7 @@ func (s *userService) InsertUser(userDTO dto.UserDTO) (dto.UserDTO, error) {
 	user.AccessLevel = "User"
 
 	//Llamamos al cliente para que interactua con la base de datos:
-	user = client.InsertUser(user)
+	user = s.repo.InsertUser(user)
 
 	if user.IDUser == -1 {
 		return userDTO, errors.New("error creating user. Email allready used")
@@ -59,7 +58,7 @@ func (s *userService) InsertUser(userDTO dto.UserDTO) (dto.UserDTO, error) {
 }
 
 func (s *userService) GetUsers() (dto.UsersDTO, error) {
-	var users model.Users = client.GetUsers()
+	var users model.Users = s.repo.GetUsers()
 	var usersDTO dto.UsersDTO
 	var userDTO dto.UserDTO
 
@@ -88,7 +87,7 @@ func (s *userService) GetUserById(id int) (dto.UserDTO, error) {
 		return userDTO, errors.New("ID not found")
 	}
 
-	user = client.GetUserById(id)
+	user = s.repo.GetUserById(id)
 
 	if user.IDUser == 0 {
 		return userDTO, errors.New("user not found")
@@ -113,7 +112,7 @@ func (s *userService) GetUserByEmail(email string) (dto.UserDTO, error) {
 		return userDTO, errors.New("email not found")
 	}
 
-	user = client.GetUserByEmail(email)
+	user = s.repo.GetUserByEmail(email)
 
 	userDTO.IDUser = user.IDUser
 	userDTO.Dni = user.Dni
@@ -129,7 +128,7 @@ func (s *userService) GetUserByEmail(email string) (dto.UserDTO, error) {
 func (s *userService) UserLogin(userDTO dto.UserDTO) (dto.UserDTO, error) {
 	var user model.User
 
-	user = client.GetUserByEmail(userDTO.Email)
+	user = s.repo.GetUserByEmail(userDTO.Email)
 
 	if user.IDUser == 0 {
 		return userDTO, errors.New("user no register")
@@ -141,7 +140,7 @@ func (s *userService) UserLogin(userDTO dto.UserDTO) (dto.UserDTO, error) {
 		return userDTO, errors.New("wrong password")
 	}
 
-	user = client.UserLogin(userDTO.Email)
+	user = s.repo.UserLogin(userDTO.Email)
 
 	userDTO.IDUser = user.IDUser
 	userDTO.Email = user.Email
@@ -160,7 +159,7 @@ func (s *userService) IsUserTeacher(id int) (bool, error) {
 	}
 
 	// Get all subscriptions for this user
-	subscriptions := client.GetSubscriptionsByUserId(id)
+	subscriptions := s.repo.GetSubscriptionsByUserId(id)
 
 	// Check if any subscription has CourseRole = "Teacher"
 	for _, subscription := range subscriptions {

@@ -224,3 +224,133 @@ Usé Claude (Claude Code, dentro de VS Code) para:
 - Diagnosticar por qué falló el primer build. Lo verifiqué yo con `git ls-files`, que confirmó que `go.mod` y `go.sum` no estaban versionados, y con el log del runner, que señalaba el `COPY` que fallaba.
 - Adaptar los ejemplos de la guía (escritos sobre .NET y una app sin subcarpeta) a mi stack Go + React y a mi estructura, donde la app vive en `course-page/`.
 - Ayuda de redacción en este archivo. El contenido lo superviso y lo entiendo; puedo explicar cada decisión.
+
+---
+---
+
+## TP5 – Testing y Calidad
+
+### 1. Qué lógica elegí testear y por qué
+
+**Backend (Go):** la capa de servicios (`service/`: `category`, `course`, `subscription`, `user`, `file` e `image`). Es donde viven las reglas de negocio: validación de IDs, búsqueda sin criterios, hash y verificación de contraseñas, rol por defecto de una suscripción, rango del rating, detección de duplicados y categoría inexistente al crear un curso.
+
+**Frontend (React):** los servicios de `src/services/` (`api.js`, `authService.js`, `courseService.js`, `subscriptionService.js` y `fileService.js`). Concentran la lógica que no es visual: cómo se arma cada pedido a la API, el manejo de errores HTTP, el token y la sesión guardada en `localStorage`.
+
+Los componentes React (`.jsx`) no los testeé: son presentación, y testearlos pide `jsdom` y Testing Library, que la guía deja como opcional. La UI completa se verifica end-to-end en el TP7.
+
+Resultado: **69 tests en el backend** y **53 ejecuciones en el frontend** (5 archivos de test).
+
+### 2. Umbral de coverage
+
+| | Métrica del umbral | Umbral | Cobertura hoy |
+|---|---|---|---|
+| Backend | Sentencias (`go tool cover`) | **80%** | **99.3%** sobre la lógica |
+| Frontend | Sentencias, ramas, funciones y líneas (vitest) | **80%** en las cuatro | 98.78% sentencias · **94.73% ramas** · 100% funciones · 98.78% líneas |
+
+**Ramas:** el frontend la mide y la reporta (94.73%). Go no expone cobertura de ramas de forma nativa, así que el umbral del backend es sobre sentencias. Cobertura de ramas del backend: PENDIENTE.
+
+**Por qué 80.** Elegí 80% porque es el valor de referencia que más se usa en la industria como piso de cobertura, y porque lo puedo sostener con mi medición real: la lógica de mi app hoy mide 99.3% (backend) y 98.78% (frontend), así que el 80% es alcanzable y deja unos 19 puntos de margen para refactors sin que el gate se rompa por cambios menores. A la vez es lo bastante exigente como para frenar código nuevo sin tests: para llevar el backend de 99.3% a menos de 80% hacen falta unas 210 sentencias sin cubrir, y en el frontend unas 20. Tiene un límite que reconozco: como estoy muy por encima, el umbral no frena una caída chica sino la entrada de código nuevo sin tests en cantidad. Si quisiera hacerlo más sensible lo subiría a ~90%, que sigue siendo alcanzable con la suite actual. Para que el número cubra más que la lógica tendría que testear `client/` y `controller/`, que son tests de integración con una base real, y eso queda para el TP7.
+
+**Cómo frena.** En el frontend, `coverage.thresholds` de vitest: si baja de 80, `vitest` sale con error. En el backend, el script `course-page/backend/scripts/coverage.sh` calcula el total con `go tool cover -func` y hace `exit 1` si queda por debajo. Los dos corren **adentro del contenedor, en una etapa `test` de cada Dockerfile**, así que el job se pone en rojo y el *required check* del TP4 bloquea el merge.
+
+### 3. Qué dejé afuera de la cuenta de cobertura
+
+**Backend** (lista de exclusión en `scripts/coverage.sh`; se mide todo el proyecto con `-coverpkg=./...` y se sacan estas rutas del perfil de cobertura):
+
+- **`main.go`, `app/` y `db/`:** arranque de la aplicación, rutas y conexión a la base. No tienen reglas de negocio, y si están mal la app no levanta. `db/db.go` lo sumé después: al medirlo bajaba el total de 99.3% a 94.7% sin que hubiera ninguna regla que verificar.
+- **`model/` y `dto/`:** structs de datos sin comportamiento.
+- **`client/`:** las consultas a la base (GORM). Testearlas pide una base de datos real, o sea tests de integración. Riesgo que dejo anotado: hay una convención que el servicio da por hecha (por ejemplo `InsertCategory` avisa "ya existe" devolviendo el nombre vacío, e `InsertUser` con ID `-1`); si alguien la cambia, ningún test unitario lo detecta.
+- **`controller/`:** los handlers HTTP. Revisé que sólo parsean el pedido, llaman al servicio y traducen el error a un código HTTP, sin reglas de negocio. Testearlos pide levantar el servidor completo.
+- **`utils/`:** helpers de errores.
+- **`service/repository.go`:** adaptadores que sólo delegan en `client`, sin lógica.
+
+La lista es de **exclusión y no de inclusión** a propósito: cualquier archivo o paquete nuevo entra solo a la cuenta, y si no tiene tests el número baja. Con una lista de inclusión, lo que me olvidara de nombrar desaparecería de la medición en silencio.
+
+Medido todo el proyecto sin exclusiones, el total de `go test` da **35.8%**; sobre la lógica da **99.3%**. No son dos mediciones del mismo código: la primera incluye lo que arriba declaré fuera.
+
+**Frontend** (`include` en `vite.config.js`):
+
+- **Componentes `.jsx` y páginas:** presentación.
+- **`categoryService.js` y `userService.js`:** wrappers de una línea sobre `apiRequest`, sin ramas ni reglas.
+- **`fileService.js` lo dejé adentro** porque arma un `FormData`, que es lógica real.
+
+### 4. Por qué coverage alto no garantiza calidad
+
+La cobertura mide **ejecución, no verificación**. Ejemplo con mi app: `InsertUser` (el alta de usuario) guarda la contraseña hasheada con bcrypt. Un test que sólo llamara a `svc.InsertUser(...)` y comprobara que no devuelve error dejaría la función en ~98% de cobertura. Pero si un día alguien guardara la contraseña en texto plano, ese test seguiría en verde.
+
+Por eso mi test de `InsertUser` verifica **qué se guardó**: que el valor guardado no es el texto plano, que `bcrypt.CompareHashAndPassword` lo valida contra la contraseña original, y que el nivel de acceso queda en `"User"` aunque el pedido pida `admin`. Lo mismo con los dobles: los asserts comprueban la interacción (por ejemplo, que ante una categoría inexistente **no** se llamó a insertar el curso), no sólo el valor devuelto.
+
+### 5. Refactorización para poder mockear
+
+Los servicios llamaban directo a funciones del paquete `client`, que usan una variable global de GORM (`client.Db`). Así no había forma de testearlos sin una base real.
+
+Qué cambié: en `service/repository.go` definí una **interfaz de repositorio por servicio** (`CategoryRepository`, `CourseRepository`, `SubscriptionRepository`, `UserRepository`, `FileRepository`, `ImageRepository`) y una implementación real que **sólo delega en `client`**, sin lógica. Cada servicio recibe su repositorio como campo (`repo`), y `init()` le pasa la implementación real. Cambié `client.X(...)` por `s.repo.X(...)` y nada más: la lógica sigue adentro del servicio y la app se comporta igual. En los tests, la dependencia se reemplaza por un doble (fake escrito a mano) que devuelve datos inventados y cuenta las llamadas.
+
+En el frontend no hizo falta refactorizar: `apiRequest` ya está separado en `api.js` y los demás servicios lo importan, así que `vi.mock('./api.js')` lo reemplaza.
+
+### 6. Reglas de negocio agregadas
+
+La app ya tenía lógica real (validaciones, hash de contraseñas, roles, rating), así que no agregué reglas para tener qué testear.
+
+Funcionalidad agregada para la demostración del freno: PENDIENTE.
+
+### 7. Stack utilizado (Go + vitest)
+
+| Qué hace falta | En .NET (cátedra) | En mi app |
+|---|---|---|
+| Test parametrizado | `[Theory]` + `[InlineData]` | *Table-driven tests*: un `[]struct{...}` recorrido con `t.Run()`; en el frontend, `it.each` |
+| Doble (mock) | Moq | Fakes escritos a mano que cuentan las llamadas (sin librería); en el frontend, `vi.fn()` y `vi.mock()` |
+| Medidor de cobertura | `coverlet` | `go test -coverpkg=./... -coverprofile` + `go tool cover`; en el frontend, `@vitest/coverage-v8` |
+| Umbral que frena el build | `/p:Threshold=70` | Script `coverage.sh` con `awk` que hace `exit 1`; en el frontend, `coverage.thresholds` |
+| Filtro de qué entra en la cuenta | `/p:Exclude=…` | `grep -Ev` sobre el perfil de cobertura (lista de exclusión); en el frontend, `coverage.include` |
+| Herramientas de test en la etapa del Dockerfile | El SDK ya las trae | El SDK de Go ya las trae (`FROM build`); en el frontend, `npm ci` sin `--omit=dev` instala vitest |
+
+### 8. El ejercicio del camino sin cubrir
+
+Abrí el reporte HTML (`coverage.html`) y encontré una línea en rojo en `service/course.go`:
+
+- **Qué línea es:** línea 219, el `return courseDTO, errors.New("error updating course")` dentro del `if course.IDCourse < 0` de `PutCourseById`. Ese `if` se evalúa justo después de llamar al repositorio y en todos mis tests da falso, porque el doble siempre devuelve el curso con su ID original.
+- **Qué entrada la recorrería:** que el repositorio devuelva el curso con `IDCourse = -1`. En la app real es lo que hace `client.PutCourseById` cuando falla cualquier paso de la actualización (la edición, el borrado de las relaciones viejas o la inserción de una nueva).
+- **Qué decidí:** **no agregar el test.** Lo dejo documentado como deuda técnica, por estas razones:
+  1. **No cambia el resultado del gate.** Esa línea es 1 de las 871 sentencias medidas (el 0.1%): con el test el backend pasaría de 99.3% a 99.4%, muy lejos del umbral de 80%. El número no es el motivo de un test, pero tampoco es una urgencia.
+  2. **El camino depende de un fallo real de la base.** El `-1` lo devuelve `client.PutCourseById` cuando se cae la transacción (la edición, el borrado de las relaciones viejas o la inserción de una nueva). Con un doble sólo podría comprobar que el servicio reacciona a un valor que yo mismo le configuré; no estaría probando que la actualización falla bien contra una base de datos de verdad. Esa verificación corresponde a un test de integración, que dejo para el TP7.
+  3. **Elegí gastar los tests donde un bug duele más.** Los tests de esta suite protegen reglas de negocio con riesgo concreto (la autenticación, el rol de la suscripción, los duplicados, las validaciones de entrada). El caso de error de una actualización es un camino de falla poco frecuente que además ya está acotado: el servicio no devuelve un éxito falso, devuelve un error.
+  4. **Es el primer test que agregaría si subo el umbral o si sumo tests de integración**, porque es la rama más clara que quedó sin recorrer.
+
+  Decidir no agregarlo no es dejarlo sin criterio: abrí el reporte, identifiqué la línea, entendí qué la dispara y evalué el costo y el beneficio de cubrirla.
+
+### 9. Pull Request bloqueado
+
+PENDIENTE.
+
+### 10. Links que prueban cada decisión
+
+PENDIENTE.
+
+### 11. Problemas encontrados y cómo los resolví
+
+- **Node no estaba instalado** en mi máquina, así que no podía instalar vitest ni correr el frontend. Instalé Node (v24 en mi máquina; el Dockerfile y el CI usan Node 22, que para estos tests de JavaScript puro no cambia nada).
+- **`db/db.go` bajaba el total del backend de 99.3% a 94.7%** cuando pasé a medir todos los paquetes con `-coverpkg=./...`. Es la conexión a la base (arranque); la sumé a la lista de exclusión y comprobé que el total volvía a 99.3%.
+- **El script de cobertura se rompería en Windows por los finales de línea:** con `core.autocrlf` los `.sh` pasan a CRLF y dentro de un contenedor Linux fallan. Agregué un `.gitattributes` que fuerza LF en `*.sh`.
+- **`go test ./...` con cobertura falló una vez en mi Windows** con `go tool covdata: The process cannot access the file because it is being used by another process`: un bloqueo transitorio del sistema de archivos. Volvió a andar solo al repetirlo.
+
+### 12. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) como asistente. **Supervisé todo el trabajo en cada paso: nada de este práctico lo hizo la IA por su cuenta ni lo acepté sin revisarlo.** Para cada tarea yo pedía una propuesta, la leía, y decidía qué se hacía y qué no.
+
+Dónde usé la IA:
+
+- Leer la guía y ordenar las tareas en una secuencia de Pull Requests.
+- Analizar los servicios del backend y proponer qué reglas testear.
+- Escribir el refactor (interfaces de repositorio), los tests, el script de cobertura, las etapas de tests de los Dockerfiles y los pasos nuevos del `ci.yml`.
+- Ayuda de redacción en este archivo.
+
+Qué decidí yo, y no la IA:
+
+- Qué se testea y qué queda afuera de la cuenta de cobertura: elegí testear también `user.go`, `file.go` e `image.go` y no esconderlos de la medición, y revisé las exclusiones contra la lista de otro equipo y contra la guía.
+- El umbral de 80%, y que la demostración del freno se hace en un Pull Request aparte.
+- Cómo se organiza el trabajo: la división en ramas y Pull Requests, y la estructura de este archivo.
+- Las convenciones del código: pedí que los nombres de los tests y los comentarios estén en inglés, como el resto del backend; y que los commits los hago yo, con los comandos que me da la IA.
+- Qué entra y qué no entra en este documento: revisé el texto y pedí sacar lo que no correspondía.
+
+Cómo lo verifiqué: corrí las suites de los dos lados y comprobé que pasan; abrí los reportes de cobertura (el HTML del backend y la tabla de vitest) y contrasté los números contra mis propias mediciones; probé que el umbral frena de verdad, ejecutando el script con un umbral de 100 y viendo que termina con error. Puedo explicar qué verifica cada test y qué casos quedan sin cubrir (secciones 3 y 8).

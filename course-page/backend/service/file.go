@@ -2,12 +2,11 @@ package service
 
 import (
 	"errors"
-	"project/client"
 	"project/dto"
 	"project/model"
 )
 
-type fileService struct{}
+type fileService struct{ repo FileRepository }
 
 type fileServiceInterface interface {
 	InsertFile(fileDTO dto.FileDTO) (dto.FileDTO, error)
@@ -20,7 +19,7 @@ type fileServiceInterface interface {
 var FileService fileServiceInterface
 
 func init() {
-	FileService = &fileService{}
+	FileService = &fileService{repo: clientFileRepository{}}
 }
 
 func (s *fileService) InsertFile(fileDTO dto.FileDTO) (dto.FileDTO, error) {
@@ -32,7 +31,7 @@ func (s *fileService) InsertFile(fileDTO dto.FileDTO) (dto.FileDTO, error) {
 	file.SubscriptionId = fileDTO.SubscriptionId
 
 	// llamo al client para que lo cargue y traiga el resto de los datos
-	file = client.InsertFile(file)
+	file = s.repo.InsertFile(file)
 
 	if file.FileId < 0 {
 		return fileDTO, errors.New("could not insert file")
@@ -53,7 +52,7 @@ func (s *fileService) GetFileById(id int) (dto.FileDTO, error) {
 		return fileDTO, errors.New("wrong ID")
 	}
 
-	file = client.GetFileById(id)
+	file = s.repo.GetFileById(id)
 
 	if file.FileId == 0 {
 		return fileDTO, errors.New("file not found")
@@ -74,7 +73,7 @@ func (s *fileService) GetFileById(id int) (dto.FileDTO, error) {
 }
 
 func (s *fileService) GetFiles() (dto.FilesDTO, error) {
-	var files model.Files = client.GetFiles()
+	var files model.Files = s.repo.GetFiles()
 	var filesDTO dto.FilesDTO
 
 	for _, file := range files {
@@ -101,7 +100,7 @@ func (s *fileService) GetFilesBySubscriptionId(subscription_id int) (dto.FilesDT
 		return filesDTO, errors.New("wrong ID for subscriptions")
 	}
 
-	files = client.GetFilesBySubscriptionId(subscription_id)
+	files = s.repo.GetFilesBySubscriptionId(subscription_id)
 
 	for _, file := range files {
 		var fileDTO dto.FileDTO
@@ -127,7 +126,7 @@ func (s *fileService) GetFilesByCourseId(course_id int) (dto.FilesDTO, error) {
 		return filesDTO, errors.New("wrong ID for course")
 	}
 
-	files = client.GetFilesByCourseId(course_id)
+	files = s.repo.GetFilesByCourseId(course_id)
 
 	for _, file := range files {
 		var fileDTO dto.FileDTO

@@ -9,6 +9,7 @@
     "lint": "eslint .",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
+    "test:ci": "vitest run --coverage --coverage.reportsDirectory=${COVERAGE_DIR:-coverage}",
     "preview": "vite preview"
   },
   "dependencies": {

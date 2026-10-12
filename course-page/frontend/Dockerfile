@@ -10,7 +10,11 @@ RUN npm ci
 COPY frontend-lms/ ./
 RUN npm run build
 
-# ---- Etapa 2: runtime  ----
+# ---- Etapa 2: tests (parte del build: ya tiene Node y las dependencias) ----
+FROM build AS test
+ENTRYPOINT ["npm", "run", "test:ci"]
+
+# ---- Etapa 3: runtime  ----
 FROM nginx:alpine AS final
 WORKDIR /usr/share/nginx/html
 

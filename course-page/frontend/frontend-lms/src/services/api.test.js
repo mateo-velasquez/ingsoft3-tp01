@@ -71,6 +71,24 @@ describe('apiRequest', () => {
     expect(fetchMock.mock.calls[0][1].headers.Authorization).toBeUndefined();
   });
 
+  it('rejects a successful response whose body is not valid JSON', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(plainTextResponse(200)));
+
+    await expect(apiRequest('/courses')).rejects.toThrow('Invalid JSON response: plain text');
+  });
+
+  it('lets the caller override the default headers', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await apiRequest('/courses', { headers: { 'X-Custom': '1' } });
+
+    const headers = fetchMock.mock.calls[0][1].headers;
+    expect(headers['X-Custom']).toBe('1');
+    expect(headers['Content-Type']).toBe('application/json');
+  });
+
   it('removes the JSON Content-Type when the body is FormData', async () => {
     const fetchMock = vi.fn().mockResolvedValue(jsonResponse(200, {}));
     vi.stubGlobal('fetch', fetchMock);
