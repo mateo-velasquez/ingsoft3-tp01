@@ -386,3 +386,54 @@ Qué decidí yo, y no la IA:
 - Qué entra y qué no entra en este documento: revisé el texto y pedí sacar lo que no correspondía.
 
 Cómo lo verifiqué: corrí las suites de los dos lados y comprobé que pasan; abrí los reportes de cobertura (el HTML del backend y la tabla de vitest) y contrasté los números contra mis propias mediciones; probé que el umbral frena de verdad, ejecutando el script con un umbral de 100 y viendo que termina con error. Puedo explicar qué verifica cada test y qué casos quedan sin cubrir (secciones 3 y 8).
+
+---
+---
+
+## TP6 – CD: environments, aprobaciones y deployment patterns
+
+### Enlaces de este TP
+
+**Paquetes públicos del registry** (los dos etiquetados con el commit del merge del PR #27, `sha-4c9905ff200e2cb039d8b7d6cdc26be4c7db2633`):
+
+- **Backend:** https://github.com/mateo-velasquez/ingsoft3-tp01/pkgs/container/ingsoft3-tp01-backend
+- **Frontend:** https://github.com/mateo-velasquez/ingsoft3-tp01/pkgs/container/ingsoft3-tp01-frontend
+
+```bash
+docker pull ghcr.io/mateo-velasquez/ingsoft3-tp01-backend:sha-4c9905ff200e2cb039d8b7d6cdc26be4c7db2633
+docker pull ghcr.io/mateo-velasquez/ingsoft3-tp01-frontend:sha-4c9905ff200e2cb039d8b7d6cdc26be4c7db2633
+```
+
+**La cadena del registry:**
+
+| Qué prueba | Link |
+|---|---|
+| PR #27 con los tests en verde y «Entrar al registry» **salteado**: sólo `main` publica | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40156283886/job/121058269832 |
+| Corrida de `main` donde «Construir y publicar la imagen» es el **último paso**, después de los tests | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40156759176/job/121059675312 |
+
+**URLs de los entornos:**
+
+| Entorno | Frontend | Backend |
+|---|---|---|
+| **QA** | *pendiente* | *pendiente* |
+| **PROD** | *pendiente* | *pendiente* |
+
+### 1. Por qué el artefacto se publica sólo con la verificación en verde
+
+Hasta el TP5 el pipeline verificaba y no dejaba nada: la imagen se construía adentro del runner y desaparecía con él. Ahora cada job de build termina publicando su imagen en `ghcr.io`, etiquetada con el commit que la produjo (`sha-<commit>`).
+
+Que en el registry sólo haya imágenes verificadas no depende de un control nuevo, sino de encadenar tres cosas:
+
+1. **Nada entra a `main` sin el pipeline en verde:** `build-backend` y `build-frontend` son *required checks* (TP4), y adentro de cada uno corre el umbral de cobertura (TP5).
+2. **Sólo lo que entra a `main` se publica:** el paso de publicar tiene `push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}`, y el login al registry tiene `if: github.event_name == 'push'`. En un PR la imagen se construye pero no se sube. Pongo las dos condiciones y no sólo la del evento porque, si mañana el workflow escucha otra rama, un push a esa rama no publicaría nada sin pasar por un PR.
+3. **Publicar es el último paso del mismo job que corre los tests:** moví el build de la imagen final, que en el TP4 estaba antes de los tests, al final del job. Si un test falla, el job muere ahí y el paso de publicar nunca corre. No hay ningún `if` que diga «si los tests pasaron»: la condición está en el orden de los pasos. Por eso los pasos que publican no llevan `!cancelled()` ni `always()`, a diferencia de los del reporte de coverage.
+
+Sin el tercero, los otros dos no alcanzan: un pipeline que publica antes de testear cumple 1 y 2, y el registry se llena de imágenes rotas. Es también la razón por la que la imagen se publica en el mismo paso que la construye y no en un job aparte: un job aparte tendría que volver a construirla, y lo publicado sería una reconstrucción y no lo verificado.
+
+**Qué dejaría de significar el registry si se publicara igual con los tests en rojo:** «estar publicado» dejaría de querer decir «pasó la verificación». El registry pasaría a ser un depósito de cosas que alguien construyó alguna vez, y no se podría desplegar nada de ahí sin volver a verificarlo.
+
+**Qué no garantiza la cadena:** que todo lo que hay en el registry venga del pipeline. Con permisos sobre el paquete, cualquiera puede subir una imagen a mano con `docker push`. La cadena garantiza lo que publica **el pipeline**; por eso la garantía es «nada llega por accidente sin verificar», no «nada puede llegar».
+
+**Permisos:** `packages: write` está declarado **por job** y no a nivel del workflow, por mínimo privilegio. `contents: read` va junto porque lo que no se lista queda sin permiso, y sin él el checkout no puede leer el código. La credencial es el `GITHUB_TOKEN` que GitHub le da a cada corrida: no hizo falta ningún secret nuevo.
+
+**La imagen de la base de datos no se publica.** `course-page/database/Dockerfile` es la imagen oficial de MySQL más mis scripts de inicialización; no tiene tests ni la construye el pipeline. Los artefactos del TP son las dos imágenes de la app: backend y frontend.
