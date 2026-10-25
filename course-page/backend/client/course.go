@@ -79,7 +79,7 @@ func SearchCourses(query string, categoryIDs []int) model.Courses {
 
 	// I check if they are searching by name
 	if query != "" {
-		queryDB = queryDB.Where("course_name LIKE ?", "%"+query+"%")
+		queryDB = queryDB.Where("course_name ILIKE ?", "%"+query+"%")
 	}
 
 	if len(categoryIDs) > 0 {
@@ -112,7 +112,7 @@ func SearchCourses(query string, categoryIDs []int) model.Courses {
 
 func InsertCourse(course model.Course) model.Course {
 	var courseAuxiliar model.Course
-	Db.Debug().Where("course_name LIKE ?", "%"+course.CourseName+"%").First(&courseAuxiliar)
+	Db.Debug().Where("course_name ILIKE ?", "%"+course.CourseName+"%").First(&courseAuxiliar)
 
 	if courseAuxiliar.IDCourse != 0 {
 		log.Error("There is already a course with this name")
@@ -128,7 +128,7 @@ func InsertCourse(course model.Course) model.Course {
 	}
 
 	var courseAUX model.Course
-	Db.Where("course_name LIKE ?", "%"+course.CourseName+"%").First(&courseAUX)
+	Db.Where("course_name ILIKE ?", "%"+course.CourseName+"%").First(&courseAUX)
 	course.IDCourse = courseAUX.IDCourse
 
 	//Now we are gonna create the relations coursecategories:

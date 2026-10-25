@@ -13,13 +13,13 @@ y para entender qué hace cada pieza antes de contenerizarla.
 |---|---|---|
 | Backend | Go + Gin + GORM | 8080 |
 | Frontend | React 19 + Vite 7 | 5173 |
-| Base de datos | MySQL 8 | 3309 |
+| Base de datos | PostgreSQL 17 | 5432 |
 
 ## Requisitos
 
 - **Go 1.23 o superior** — `go version`
 - **Node 20.19+ o 22.12+** (lo pide Vite 7) — `node --version`
-- **MySQL 8**, ya sea como contenedor (opción A) o instalado localmente (opción B)
+- **PostgreSQL 17**, ya sea como contenedor (opción A) o instalado localmente (opción B)
 
 ---
 
@@ -30,39 +30,35 @@ ejemplo (`load_data.sql`).
 
 ### Opción A — como contenedor (recomendado)
 
-No requiere instalar MySQL: el `Dockerfile` de `database/` ya siembra las dos
-cosas al inicializarse.
+No requiere instalar PostgreSQL: el `Dockerfile` de `database/` ya siembra las
+dos cosas al inicializarse.
 
 ```powershell
 cd course-page
 docker build -t course-db ./database
-docker run -d --name mysql-tp2 --env-file .env -p 3309:3309 -v mysql_tp2_data:/var/lib/mysql course-db
+docker run -d --name postgres-tp2 --env-file .env -p 5432:5432 -v postgres_tp2_data:/var/lib/postgresql/data course-db
 ```
 
-La primera vez tarda hasta un minuto en crear las tablas y cargar los datos.
+La primera vez tarda unos segundos en crear las tablas y cargar los datos.
 Esperá a que responda:
 
 ```powershell
-docker exec mysql-tp2 mysqladmin ping -uroot -p<tu_password>
+docker exec postgres-tp2 pg_isready -h 127.0.0.1 -U postgres
 ```
-
-> El `-p 3309:3309` no es un typo: el `.env` define `MYSQL_TCP_PORT=3309`, que le
-> cambia el puerto al servidor MySQL **dentro** del contenedor. Por eso los dos
-> lados del mapeo son 3309.
 
 Comandos útiles:
 
 ```powershell
-docker stop mysql-tp2             # apagar (los datos quedan)
-docker start mysql-tp2            # volver a prender
-docker rm -f mysql-tp2            # borrar el contenedor
-docker volume rm mysql_tp2_data   # borrar también los datos
+docker stop postgres-tp2             # apagar (los datos quedan)
+docker start postgres-tp2            # volver a prender
+docker rm -f postgres-tp2            # borrar el contenedor
+docker volume rm postgres_tp2_data   # borrar también los datos
 ```
 
-### Opción B — MySQL instalado localmente
+### Opción B — PostgreSQL instalado localmente
 
-Si preferís no usar Docker en ningún punto, con un MySQL 8 propio escuchando en
-el puerto 3309:
+Si preferís no usar Docker en ningún punto, con un PostgreSQL 17 propio
+escuchando en el puerto 5432:
 
 ```sql
 CREATE DATABASE course_page;
@@ -71,12 +67,13 @@ CREATE DATABASE course_page;
 Y después cargá los dos scripts, en este orden:
 
 ```powershell
-mysql -u root -p -P 3309 course_page < database/create_tables.sql
-mysql -u root -p -P 3309 course_page < database/load_data.sql
+psql -U postgres -p 5432 -d course_page -f database/create_tables.sql
+psql -U postgres -p 5432 -d course_page -f database/load_data.sql
 ```
 
-> Si tu MySQL escucha en el 3306 (el default), usá ese puerto acá y ajustá
-> `DB_PORT` en el paso 2.
+> El schema lo crea `create_tables.sql`, no el `AutoMigrate` del backend: es el
+> que define las PK autoincrementales y los triggers. Para Neon es el mismo
+> script, pegado en el SQL Editor.
 
 ---
 
@@ -86,11 +83,15 @@ Creá el archivo **`backend/.env`** (git lo ignora, no se commitea):
 
 ```
 DB_NAME=course_page
-DB_USER=root
+DB_USER=postgres
 DB_PASS=<la contraseña que pusiste en course-page/.env>
 DB_HOST=localhost
-DB_PORT=3309
+DB_PORT=5432
+DB_SSLMODE=disable
 ```
+
+> `DB_SSLMODE` vale `disable` en local (y es el default si no está). Contra Neon
+> va `require`, porque Neon sólo acepta conexiones con TLS.
 
 > ⚠️ **Este archivo va en `backend/`, no en `course-page/`.** El código hace
 > `godotenv.Load()` sin ruta, así que busca el `.env` en el directorio desde el
@@ -150,9 +151,10 @@ funciona porque `app/router.go` habilita CORS para `http://localhost:5173`.
 
 | Síntoma | Causa |
 |---|---|
-| `No .env file found` seguido de `Access denied for user ''` | Falta `backend/.env`, o lo creaste en otra carpeta. Sin variables, el usuario y la contraseña viajan vacíos |
-| `Connection Failed to Open` / `connection refused` | La base todavía no terminó de inicializar, o está apagada. Verificá con el `ping` del paso 1 |
-| `Error 1049: Unknown database 'course_page'` | La base existe pero sin el schema: faltó correr `create_tables.sql` |
+| `No .env file found` seguido de `password authentication failed` | Falta `backend/.env`, o lo creaste en otra carpeta. Sin variables, el usuario y la contraseña viajan vacíos |
+| `Connection Failed to Open` / `connection refused` | La base todavía no terminó de inicializar, o está apagada. Verificá con el `pg_isready` del paso 1 |
+| `database "course_page" does not exist` | Falta crear la base (`CREATE DATABASE course_page;`) |
+| `relation "courses" does not exist` | La base existe pero sin el schema: faltó correr `create_tables.sql` |
 | El front carga pero sin cursos | El backend no está levantado, o quedó en otro puerto |
-| `port is already allocated` al crear el contenedor | Ya tenés algo en el 3309. `docker rm -f mysql-tp2` o cambiá el puerto publicado |
+| `port is already allocated` al crear el contenedor | Ya tenés algo en el 5432 (por ejemplo un PostgreSQL instalado). `docker rm -f postgres-tp2` o cambiá el puerto publicado |
 | `npm ci can only install packages when...` | El `package-lock.json` quedó desincronizado. Corré `npm install` y commiteá el lockfile |
