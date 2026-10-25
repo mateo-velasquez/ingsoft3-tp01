@@ -24,7 +24,13 @@ RUN rm -rf ./*
 # Vite emite en dist/.
 COPY --from=build /app/dist .
 
-# La config que hace el proxy de /api hacia el backend
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# La plantilla que hace el proxy de /api hacia el backend. Va en templates/ y no en
+# conf.d/: nginx leería conf.d/ tal cual, con los ${…} sin reemplazar, y no arrancaría.
+COPY default.conf.template /etc/nginx/templates/default.conf.template
+
+# Valores por defecto = los de compose. Render los pisa con las variables del servicio.
+ENV PORT=80 \
+    BACKEND_URL=http://backend:8080 \
+    DNS_RESOLVER=127.0.0.11
 
 EXPOSE 80
