@@ -415,8 +415,18 @@ docker pull ghcr.io/mateo-velasquez/ingsoft3-tp01-frontend:sha-4c9905ff200e2cb03
 
 | Entorno | Frontend | Backend |
 |---|---|---|
-| **QA** | *pendiente* | *pendiente* |
-| **PROD** | *pendiente* | *pendiente* |
+| **QA** | https://course-page-front-qa.onrender.com | https://course-page-api-qa.onrender.com |
+| **PROD** | https://course-page-front-prod.onrender.com | https://course-page-api-prod.onrender.com |
+
+Están en el free tier de Render: si nadie entró en los últimos ~15 minutos, el primer pedido tarda
+hasta un minuto en contestar (sección 6). `/health` en cualquiera de las dos api dice qué commit
+está corriendo.
+
+**El gate hacia PROD:**
+
+| Qué prueba | Link |
+|---|---|
+| Rechazo con motivo: QA en verde y `deploy-prod` rechazado | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40220600053 |
 
 ### 1. Por qué el artefacto se publica sólo con la verificación en verde
 
@@ -436,4 +446,224 @@ Sin el tercero, los otros dos no alcanzan: un pipeline que publica antes de test
 
 **Permisos:** `packages: write` está declarado **por job** y no a nivel del workflow, por mínimo privilegio. `contents: read` va junto porque lo que no se lista queda sin permiso, y sin él el checkout no puede leer el código. La credencial es el `GITHUB_TOKEN` que GitHub le da a cada corrida: no hizo falta ningún secret nuevo.
 
-**La imagen de la base de datos no se publica.** `course-page/database/Dockerfile` es la imagen oficial de MySQL más mis scripts de inicialización; no tiene tests ni la construye el pipeline. Los artefactos del TP son las dos imágenes de la app: backend y frontend.
+**La imagen de la base de datos no se publica.** `course-page/database/Dockerfile` es la imagen oficial de Postgres más mis scripts de inicialización; no tiene tests ni la construye el pipeline. Los artefactos del TP son las dos imágenes de la app: backend y frontend.
+
+### 2. Dos entornos reales
+
+**Dónde corre cada cosa.** Los dos entornos son iguales y no comparten nada salvo el código:
+
+| | QA | PROD |
+|---|---|---|
+| Frontend (Render, Docker) | `course-page-front-qa` | `course-page-front-prod` |
+| Backend (Render, Docker) | `course-page-api-qa` | `course-page-api-prod` |
+| Base (Neon, Postgres 17) | `app_qa` | `app_prod` |
+
+Los cuatro servicios tienen **Auto-Deploy en Off**: Render no despliega solo cuando cambia `main`,
+sólo cuando lo llama el pipeline por el deploy hook (sección 4).
+
+**Por qué migré de MySQL a Postgres.** El free tier que propone la guía para la base es Neon, que es
+sólo Postgres. Mi app venía con MySQL, y tenía dos caminos: buscar un MySQL gratis o migrar. Elegí
+migrar porque el cambio era chico y quedaba acotado: GORM v1 tiene el dialecto de Postgres, así que
+en el código cambió la conexión (`db/db.go`) y las búsquedas, que pasaron de `LIKE` a `ILIKE` para
+seguir sin distinguir mayúsculas. El trabajo grande fue el schema (`create_tables.sql`): los `ENUM`
+pasaron a `CHECK`, el `AUTO_INCREMENT` a `IDENTITY`, y el trigger que recalcula el rating del curso
+lo reescribí en PL/pgSQL. Además agregué un trigger que reemplaza el `id = 0` por el siguiente de la
+secuencia, porque GORM v1 manda el 0 en los inserts y MySQL lo interpretaba como «generalo vos»;
+Postgres lo guardaría literal.
+
+El schema se carga a mano en cada base desde el SQL Editor de Neon, antes del primer deploy. No lo
+crea la app: el `AutoMigrate` de GORM v1 no entiende las etiquetas `primaryKey` y `autoIncrement` de
+los modelos (son de GORM v2), así que la fuente de verdad del schema es el `.sql`.
+
+**No usé el Postgres de Render** porque su base gratuita vence a los 30 días de creada, y el TP tiene
+que seguir vivo hasta la defensa. La de Neon es permanente, con límites de uso.
+
+**Qué quedó por variable y qué quedó adentro de la imagen.** El criterio fue: adentro de la imagen
+va lo que es igual en todos los entornos, y por variable lo que cambia de un entorno a otro.
+
+| Servicio | Por variable de entorno | Adentro de la imagen |
+|---|---|---|
+| Frontend (nginx) | `BACKEND_URL` (a qué api reenvía `/api`), `DNS_RESOLVER`, `PORT` | Los estáticos compilados por Vite y la plantilla de nginx |
+| Backend (Go) | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME`, `DB_SSLMODE`, `ALLOWED_ORIGINS` (el front del mismo entorno), `PORT` | El binario |
+
+La dirección del backend no está en el código del front: el front siempre pide a `/api/...` (una ruta
+relativa), y es nginx el que reenvía. La plantilla `default.conf.template` tiene
+`set $backend_api ${BACKEND_URL};`, y la imagen oficial de nginx reemplaza la variable al arrancar.
+Por eso la misma imagen sirve en compose (donde `BACKEND_URL` es `http://backend:8080`, el default
+del Dockerfile) y en Render (donde es la URL https de la api de ese entorno). Lo mismo con
+`DNS_RESOLVER`: en compose es el DNS interno de Docker (`127.0.0.11`) y en Render uno público.
+
+`PORT` también va por variable porque Render le dice a cada servicio en qué puerto escuchar. El
+backend cae en 8080 y el front en 80 si no está seteado, que es lo que usa compose.
+
+Esto es lo que hace posible el TP7: para desplegar **una misma imagen** en los dos entornos, nada de
+lo que distingue a QA de PROD puede estar horneado adentro.
+
+**Cómo comprobé que las bases están separadas de verdad.** Desde el SQL Editor de Neon inserté una
+categoría «SOY PROD» sólo en `app_prod`. La api de PROD devuelve 51 categorías con «SOY PROD»
+incluida; la de QA devuelve 50 y no la tiene. Si las dos api apuntaran a la misma base, el dato
+aparecería en las dos.
+
+**Lo que no persiste.** Las imágenes y archivos que suben los usuarios se guardan en el disco del
+contenedor del backend (`/app/images` y `/app/files`), y en el free tier de Render ese disco se
+borra en cada deploy. Además las imágenes de los datos de ejemplo no están en la imagen (el
+Dockerfile sólo crea las carpetas vacías), así que en Render los cursos de la semilla se ven sin
+foto: el front pide `/api/images/Image-N.jpg` y la api responde 404. La solución real sería guardar
+los archivos en un almacenamiento externo (un bucket), y no entra en este TP.
+
+### 3. Continuous Delivery, no Continuous Deployment
+
+Implementé **Continuous Delivery**: cada merge a `main` llega solo hasta QA, y para llegar a PROD
+alguien tiene que aprobar. En Continuous Deployment el mismo merge llegaría a PROD sin intervención.
+
+Corresponde a mi contexto porque la verificación automática que tengo no alcanza para confiarle PROD
+sin mirar:
+
+- Los tests son unitarios sobre la lógica (TP5). No hay tests de integración contra una base real ni
+  tests end-to-end (eso es el TP7). Un cambio en el schema o en una consulta pasa el pipeline en
+  verde.
+- El smoke test comprueba que el entorno contesta, no que la app funciona (sección 8).
+- No tengo observabilidad en PROD: ni métricas de errores ni alertas. Si un deploy rompe algo que el
+  smoke no mira, me entero cuando alguien lo usa.
+
+Con eso, desplegar solo a PROD sería apostar a que lo que no se verifica no se rompe. El gate humano
+compra un momento para mirar QA funcionando con el cambio antes de decidir. Pasaría a Continuous
+Deployment cuando el pipeline verificara lo que hoy miro a mano: tests end-to-end contra QA y una
+forma de detectar y revertir un deploy malo sin que alguien lo note primero.
+
+### 4. Diseño de la cadena y alcance de los secrets
+
+La cadena completa está en un solo workflow (`.github/workflows/ci.yml`), y cada eslabón depende del
+anterior:
+
+```
+build-backend ─┐
+               ├─► deploy-qa ──► ⏸ aprobación ──► deploy-prod
+build-frontend ┘
+```
+
+- **`needs: [build-backend, build-frontend]`** en `deploy-qa`: si un test falla, el build no termina
+  y no hay deploy. Es la misma garantía de la sección 1 (sin verificación no hay artefacto) llevada un
+  paso más.
+- **`if: github.ref == 'refs/heads/main'`** en `deploy-qa`: los PRs verifican, sólo `main` despliega.
+  En un PR, `deploy-qa` aparece como salteado.
+- **`needs: [deploy-qa]`** en `deploy-prod`: a PROD sólo llega un commit que ya está corriendo en QA
+  y pasó el smoke. No le puse un `if` propio porque no le hace falta: si `deploy-qa` se saltea, todo lo
+  que depende de él también.
+- **`environment: production`** en `deploy-prod`: el environment tiene un *required reviewer* (yo),
+  así que el job se pausa en *Waiting for review* hasta que alguien aprueba o rechaza. *Prevent
+  self-review* está desactivado: si no, no podría aprobar mis propios deploys.
+- **`&ref=$GITHUB_SHA`** en los dos deploy hooks: Render despliega el commit de esta corrida, no la
+  punta de `main`. En PROD es lo que hace que la aprobación signifique algo: entre que el job queda
+  esperando y que alguien aprueba pueden pasar horas y entrar otros merges. Sin el `&ref`, se aprueba
+  un commit y a PROD sube otro.
+- **`concurrency`** en los dos deploys, con `cancel-in-progress: false`: si entran dos merges
+  seguidos, el segundo deploy espera a que termine el primero. Si lo cancelara, el smoke del primero
+  quedaría esperando un commit que no va a llegar.
+
+**Alcance de los secrets.** Los únicos secrets son los cuatro deploy hooks de Render, que son URLs
+con una clave: quien tiene la URL puede desplegar ese servicio. Cada par vive en su environment, no a
+nivel del repo:
+
+| Secret | Dónde vive | Quién lo puede leer |
+|---|---|---|
+| `RENDER_HOOK_API_QA`, `RENDER_HOOK_FRONT_QA` | Environment `qa` | Sólo un job que declara `environment: qa` |
+| `RENDER_HOOK_API_PROD`, `RENDER_HOOK_FRONT_PROD` | Environment `production` | Sólo un job que declara `environment: production`, **y recién después de la aprobación** |
+
+Lo segundo es la diferencia importante: mientras el job de PROD está en *Waiting for review* todavía
+no arrancó, así que ningún paso tiene acceso a los hooks de PROD. Si estuvieran a nivel del repo,
+cualquier job de cualquier workflow los podría leer sin pasar por el gate. Los hooks de PROD
+apuntan a los servicios `-prod`: lo comprobé comparando el id del servicio en la URL del hook con el
+de la página del servicio en Render.
+
+Las credenciales de la base (`DB_PASS` y compañía) no pasan por GitHub: están cargadas como
+variables de entorno de cada servicio en Render, y el pipeline nunca las ve.
+
+### 5. Qué mira el aprobador antes de aprobar
+
+Aprobar no es tocar el botón cuando aparece. Antes de aprobar miro:
+
+1. **Qué cambia el merge.** El PR que lo generó: si toca el schema, la conexión a la base o la
+   configuración de los entornos, lo miro con más cuidado que un cambio de texto, porque el smoke no
+   lo cubre y en PROD hay datos que no puedo regenerar.
+2. **Que QA corra ese commit.** `/health` de QA tiene que decir el mismo commit que la corrida. El
+   smoke ya lo comprueba, pero miro cuántos intentos tardó: un smoke que pasa en la última vuelta es
+   una señal de que algo anda lento.
+3. **Que QA funcione con el cambio.** Entro al front de QA y pruebo lo que el cambio toca, más el
+   login, que es el camino que más usa la app.
+4. **Qué hay en PROD hoy.** `/health` de PROD: si está varios commits atrás, este deploy sube todos
+   esos cambios juntos, y tengo que mirarlos a todos, no sólo el último.
+5. **Que no haya otro merge en camino.** Si sé que entra otro cambio en minutos, prefiero esperar y
+   aprobar los dos juntos que hacer dos deploys seguidos.
+
+**El rechazo** de la corrida
+[40220600053](https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40220600053) salió de
+los puntos 1 y 4: era el merge que agregaba el propio job de PROD, o sea la primera vez que el
+pipeline iba a llamar a los hooks de producción, y PROD seguía dos commits atrás (en el merge del
+PR #30). El motivo quedó escrito en la corrida.
+
+**Qué no puede ver mi aprobador.** Sólo ve lo que yo puedo mirar a mano en QA: no hay métricas, ni
+logs centralizados, ni tasa de errores de PROD para comparar antes y después. Tampoco ve si el cambio
+funciona con los datos de PROD, que son otros que los de QA. El gate depende de que la persona que
+aprueba mire; si aprueba sin mirar, es un trámite.
+
+### 6. La letra chica del free tier, y cómo la maneja el pipeline
+
+| Plataforma | Qué limita | Cómo me afecta | Cómo lo maneja el pipeline |
+|---|---|---|---|
+| Render | El servicio se duerme a los ~15 min sin tráfico, y el primer pedido lo despierta con un *cold start* de hasta ~1 min | Un curl sin espera daría error aunque el entorno esté bien | El smoke reintenta 30 veces cada 20 s (10 min) y cada curl tiene `--max-time 10`, porque un servicio despertando acepta la conexión y no contesta |
+| Render | El hook responde al instante, pero el deploy es asincrónico: construye la imagen y recién después cambia de versión, y mientras tanto sigue sirviendo la vieja | El smoke podría dar verde contra la versión anterior | El smoke espera a que `/health` diga el commit de la corrida (sección 8) |
+| Render | 750 horas de instancia por mes **por workspace**, compartidas entre los cuatro servicios, y minutos de build limitados | Cuatro servicios despiertos todo el mes no entran; cada deploy construye dos imágenes por entorno | Los servicios duermen cuando no se usan, y sólo `main` despliega: los PRs construyen en GitHub, no en Render |
+| Render | El disco del contenedor no persiste entre deploys | Se pierden los archivos subidos (sección 2) | No lo maneja: queda como deuda |
+| Neon | El cómputo se suspende a los ~5 min sin uso, 0.5 GB de almacenamiento y horas de cómputo por mes | La primera consulta después de un rato tarda más | El mismo reintento del smoke lo cubre; los datos son pocos y entran de sobra |
+
+### 7. Qué garantía pierdo porque Render reconstruye desde el repo
+
+El pipeline publica en `ghcr.io` la imagen verificada (sección 1), pero Render **no la usa**: el hook
+le dice qué commit desplegar, y Render clona el repo y construye su propia imagen con el Dockerfile.
+Lo que corre en QA y en PROD es una reconstrucción del mismo código, no el artefacto que pasó los
+tests.
+
+Lo que se pierde es la garantía de que **lo que corre es exactamente lo que se verificó**:
+
+- El build de Render no corre los tests: construye sólo la etapa final del Dockerfile.
+- Mis imágenes base tienen tags que se mueven (`nginx:alpine`, `alpine:3.21`, `golang:1.26-alpine`).
+  Si entre el build de GitHub y el de Render sale una versión nueva de alguna, el resultado es
+  distinto con el mismo código.
+- QA y PROD son **dos builds separados** del mismo commit, posiblemente en momentos distintos (el de
+  PROD sale después de la aprobación). Lo que aprobé mirando QA no es, bit por bit, lo que llega a
+  PROD.
+
+Lo que sí se mantiene es el código: el `&ref=$GITHUB_SHA` asegura que los dos entornos construyen el
+commit que pasó la verificación. La garantía pasa de «el mismo artefacto» a «el mismo código fuente».
+Para recuperarla, Render tendría que desplegar la imagen de `ghcr.io` por su digest en vez de
+construir. Eso es lo que hace el TP7.
+
+### 8. Qué prueba el smoke test y qué no
+
+El smoke corre después de cada deploy y falla el job si en 10 minutos no se cumplen las cuatro
+condiciones juntas:
+
+| Pedido | Qué prueba |
+|---|---|
+| `/health` de la api devuelve el commit de la corrida | El proceso está vivo **y es la versión nueva**. Render deja `RENDER_GIT_COMMIT` en el entorno y `/health` lo devuelve |
+| `/courses` de la api | La api llega a la base: las credenciales, el host y el schema están bien |
+| `/` del front | nginx está sirviendo los estáticos |
+| `/api/health` del front | El proxy del front llega a la api de su entorno: `BACKEND_URL` y `DNS_RESOLVER` están bien |
+
+La guía avisa que un smoke que sólo pide `/health` contesta pero no dice qué versión corre: como
+Render sigue sirviendo la versión vieja mientras construye la nueva, daría verde contra el commit
+anterior. Por eso mi `/health` devuelve el commit, y el smoke compara. `/health` no toca la base a
+propósito: si lo hiciera, una base caída mostraría el proceso como muerto. Para la base está
+`/courses`.
+
+**Lo que no prueba:**
+
+- **Que la app funcione.** Son cuatro GET. No prueba el login, ni las inscripciones, ni ningún
+  camino que escriba en la base.
+- **El CORS.** El smoke no manda `Origin`, así que un `ALLOWED_ORIGINS` mal cargado pasa en verde. Me
+  pasó (sección de problemas): el login daba 403 con el smoke contento.
+- **Que el front haya compilado bien.** Que `/` conteste 200 no dice que el JavaScript ande.
+- **Que el front sea la versión nueva.** El commit lo comprueba sólo en la api. El front no tiene
+  un `/health` propio que devuelva su commit.
+- **Que siga andando después.** Es una foto del momento del deploy, no un monitoreo.
