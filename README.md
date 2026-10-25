@@ -84,7 +84,7 @@ course-page/
 ├── backend/                 Go + Gin — Dockerfile multi-stage
 ├── frontend/
 │   ├── Dockerfile           multi-stage: build con Node, sirve nginx
-│   ├── nginx.conf           estáticos + proxy /api hacia el backend
+│   ├── default.conf.template  estáticos + proxy /api hacia el backend (dirección por variable)
 │   └── frontend-lms/        código React
 ├── database/                PostgreSQL + scripts de schema y datos
 ├── docker-compose.yml       construye las imágenes desde el código
