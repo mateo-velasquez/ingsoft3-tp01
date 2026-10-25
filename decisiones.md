@@ -427,6 +427,7 @@ está corriendo.
 | Qué prueba | Link |
 |---|---|
 | Rechazo con motivo: QA en verde y `deploy-prod` rechazado | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40220600053 |
+| Flujo completo: QA verde → *Waiting for review* → aprobación → PROD desplegado y smoke verde | https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40222464413 |
 
 ### 1. Por qué el artefacto se publica sólo con la verificación en verde
 
@@ -662,8 +663,175 @@ propósito: si lo hiciera, una base caída mostraría el proceso como muerto. Pa
 - **Que la app funcione.** Son cuatro GET. No prueba el login, ni las inscripciones, ni ningún
   camino que escriba en la base.
 - **El CORS.** El smoke no manda `Origin`, así que un `ALLOWED_ORIGINS` mal cargado pasa en verde. Me
-  pasó (sección de problemas): el login daba 403 con el smoke contento.
+  pasó (sección 11): el login daba 403 con el smoke contento.
 - **Que el front haya compilado bien.** Que `/` conteste 200 no dice que el JavaScript ande.
 - **Que el front sea la versión nueva.** El commit lo comprueba sólo en la api. El front no tiene
   un `/health` propio que devuelva su commit.
 - **Que siga andando después.** Es una foto del momento del deploy, no un monitoreo.
+
+### 9. Qué deployment pattern usaría en una producción real
+
+Usaría **blue-green**: dos copias de PROD, una con la versión actual (la que recibe el tráfico) y otra
+con la nueva. La nueva se levanta y se verifica sin usuarios, y recién después se mueve todo el tráfico
+de una a la otra. Si algo sale mal, se vuelve a mover el tráfico a la vieja, que sigue levantada.
+
+**Por qué ése y no los otros:**
+
+| Pattern | Por qué no (o por qué sí) para esta app |
+|---|---|
+| **Blue-green** ✅ | La app corre en una sola instancia por servicio y es chica: duplicarla durante el cambio cuesta poco. El rollback es instantáneo porque la versión vieja sigue levantada, y no pide nada que hoy no tenga para decidir: alcanza con verificar la copia nueva antes de mover el tráfico |
+| Canary | Manda un porcentaje del tráfico a la versión nueva y compara. Para que sirva hacen falta dos cosas que no tengo: un balanceador que reparta por porcentaje, y métricas de errores y latencia por versión para saber si el canario está peor. Sin métricas, un canary es un blue-green lento |
+| Rolling | Reemplaza las instancias de a una. Con una sola instancia por servicio no hay nada que rotar: es un deploy común |
+| Feature flags | No reemplazan a ninguno: sirven para apagar una funcionalidad sin desplegar. Los sumaría para los cambios grandes, pero el problema que resuelve el pattern (cómo cambio la versión sin cortar) sigue estando |
+
+En parte Render ya hace algo parecido: levanta la versión nueva, espera que el health check conteste
+y recién ahí deja de mandarle tráfico a la vieja. Por eso un deploy no corta el servicio. Lo que no
+tengo es la copia vieja **esperando**: después del cambio se apaga, y volver atrás es un deploy nuevo
+(sección 10).
+
+**Costo.** Dos copias del backend y del front durante el cambio. Para esta app son instancias chicas,
+y la copia vieja se puede apagar cuando la nueva lleva un rato estable.
+
+**Riesgo: la base es una sola.** Blue y green hablan con la misma base, así que durante el cambio las
+dos versiones la usan a la vez. Eso obliga a que los cambios de schema sean compatibles hacia atrás:
+primero se agrega lo nuevo (una columna, una tabla) sin sacar lo viejo, se despliega la versión que lo
+usa, y recién en un deploy posterior se borra lo que ya no se usa. Si no, volver a blue no sirve: la
+versión vieja no entiende la base nueva.
+
+**Qué observabilidad me falta para ejecutarlo:**
+- Un health check que pruebe más que «el proceso contesta»: por ejemplo, que la base responde y que el
+  login funciona, para decidir si green está lista.
+- Métricas de errores (5xx) y de latencia, antes y después del cambio, para saber si green está peor
+  que blue. Hoy sólo tengo los logs de Render, y los miro a mano.
+- Alertas: que algo me avise si después del cambio suben los errores, en vez de enterarme por un
+  usuario.
+
+### 10. Plan de rollback actual, con el tiempo medido
+
+**Lo probé de verdad una vez**, en PROD, volviendo del merge del PR #33 (`d3edad5`) al del PR #30
+(`a9fa061`), y después volviendo a `d3edad5`. Usé el botón **Rollback** de Render, que vuelve a poner
+en marcha la imagen que ya había construido para ese deploy, sin reconstruir.
+
+| Servicio | Deploy | Disparado por | Duración en Render |
+|---|---|---|---|
+| `course-page-api-prod` | `a9fa061` | **Rollback** | **10.9 s** |
+| `course-page-front-prod` | `a9fa061` | **Rollback** | **10.8 s** |
+| `course-page-api-prod` | `d3edad5` | Deploy Hook (el pipeline) | 24.1 s |
+| `course-page-front-prod` | `d3edad5` | Deploy Hook (el pipeline) | 23.3 s |
+
+Los números salen de *Deploys* de cada servicio en Render. Mientras tanto, consulté `/health` de la
+api de PROD cada 5 s: pasó de `d3edad5` a `a9fa061` sin dejar de contestar, y `/api/health` del front
+siguió devolviendo 200, salvo un par de pedidos que tardaron más de 10 s. Render no apaga la versión
+vieja hasta que la nueva está lista.
+
+El rollback tarda menos de la mitad que un deploy porque no construye. El deploy del pipeline
+reconstruye la imagen (sección 7), y si Render no tuviera la cache del build anterior tardaría más:
+el primer deploy de la api tardó 1m10s.
+
+**Paso a paso, si un deploy aprobado sale mal:**
+
+1. **Decidir volver.** Lo veo porque el smoke de PROD falla, porque `/health` de PROD no responde, o
+   porque probando la app algo no anda. Si dudo, vuelvo: el rollback cuesta 11 segundos y se puede
+   deshacer.
+2. **Rollback de la api.** Render → `course-page-api-prod` → *Deploys* → en la fila del último deploy
+   bueno, **Rollback** → *Rollback to this deploy*. El último deploy bueno es el anterior en la lista,
+   y su commit es el de la release anterior.
+3. **Rollback del front**, igual, en `course-page-front-prod`.
+4. **Verificar.** `/health` de la api de PROD tiene que decir el commit al que volví, y el login tiene
+   que funcionar desde el front de PROD.
+5. **Arreglar `main`.** El rollback de Render no toca el repo: `main` sigue teniendo el commit malo,
+   y el próximo merge aprobado lo volvería a subir junto con lo nuevo. Hay que revertirlo con un PR
+   (`git revert`), que pasa por el mismo pipeline y el mismo gate.
+
+**Cuánto tarda:** la parte de Render, unos 11 segundos por servicio, medido. A eso se suma el tiempo
+de llegar a la pantalla y tocar los botones de los dos servicios, que en la prueba fue de un par de
+minutos. Lo que no está en ese número es el tiempo de **darse cuenta**: sin alertas (sección 9), eso
+depende de que alguien mire.
+
+**Plan B, sin el dashboard.** Los mismos deploy hooks de PROD que usa el pipeline, con el commit
+anterior: `curl "$HOOK&ref=<sha-anterior>"`. Funciona igual, pero reconstruye la imagen, así que
+tarda lo que un deploy (unos 24 s con cache).
+
+**Lo que el rollback no deshace: los datos.** El rollback vuelve el **código** a la versión anterior.
+La base sigue igual:
+
+- Lo que la versión mala escribió en la base se queda: filas creadas, modificadas o borradas.
+- Si la versión mala cambió el schema (sacó una columna, cambió un tipo), la versión vieja vuelve a una
+  base que no entiende, y el rollback la rompe en vez de arreglarla. Por eso los cambios de schema
+  tienen que ser compatibles hacia atrás (sección 9).
+- Los archivos que los usuarios subieron mientras corría la versión mala se pierden igual con el
+  rollback, porque el disco del contenedor no persiste (sección 2).
+- Render avisa que el rollback también revierte «ciertos cambios de configuración»: si entre los dos
+  deploys cambié una variable de entorno, también vuelve.
+
+Para poder volver atrás los datos haría falta un backup de la base de antes del deploy, o usar la
+restauración a un punto en el tiempo de Neon, que en el free tier sólo cubre una ventana corta. Y
+aun así, restaurar la base borra lo que los usuarios hicieron de bueno después del deploy, así que no
+es un botón de deshacer: es una decisión aparte.
+
+### 11. Problemas encontrados y cómo los resolví
+
+**El login de QA daba 403.** Los GET andaban y el login no. Era la misma pista que en el TP2: el 403
+venía del middleware de CORS, porque el navegador manda `Origin` en el POST del login y no en los
+GET. Pero esta vez la lista de orígenes salía de `ALLOWED_ORIGINS`, y la variable estaba cargada.
+El problema era el valor: le había puesto la URL de la **api** de QA, y tenía que ser la del
+**front**, que es desde donde viene el pedido. El smoke no lo detectó porque no manda `Origin`
+(sección 8).
+
+**El schema no lo crea la app.** Supuse que el `AutoMigrate` de GORM creaba las tablas al arrancar,
+pero los modelos usan etiquetas de GORM v2 (`primaryKey`, `autoIncrement`) y la app usa GORM v1, que
+no las entiende. La fuente de verdad del schema es `create_tables.sql`, y lo cargué a mano en
+`app_qa` y `app_prod` desde el SQL Editor de Neon antes del primer deploy.
+
+**GORM v1 manda `id = 0` en los inserts.** MySQL lo interpretaba como «generalo vos»; Postgres lo
+guardaría como 0, y el segundo insert chocaría con la clave. Lo resolví con un trigger en el schema
+que reemplaza el 0 por el siguiente valor de la secuencia.
+
+**nginx no puede leer la dirección del backend de una variable directamente.** La configuración de
+nginx es un archivo fijo. Usé la plantilla de la imagen oficial (`/etc/nginx/templates/`), que
+reemplaza las `${VARIABLE}` al arrancar. Si se copia a `conf.d/` en vez de `templates/`, nginx lee las
+`${…}` literales y no arranca.
+
+**Neon ofrece la conexión con *pooling* por defecto.** La desactivé y usé el host directo (sin
+`-pooler`): cada entorno es un solo proceso que ya mantiene su propio pool de conexiones
+(`database/sql`), así que el pooler de Neon sería una capa más sin nada que aportar.
+
+**La rama por defecto de Neon se llama «production».** Es el nombre que Neon le pone a la rama
+principal del proyecto, y no tiene nada que ver con mi PROD: las dos bases, `app_qa` y `app_prod`,
+viven en esa misma rama. Lo que separa los entornos es la base, no la rama de Neon.
+
+**Las fotos de los cursos dan 404 en Render.** Las imágenes de la semilla no están dentro de la
+imagen del backend (sección 2). No lo resolví: queda como deuda.
+
+### 12. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) como asistente. **Supervisé todo el trabajo en cada paso:
+nada de este práctico lo hizo la IA por su cuenta ni lo acepté sin revisarlo.**
+
+Dónde usé la IA:
+
+- Leer la guía y ordenar las tareas en una secuencia de Pull Requests.
+- Evaluar cuánto costaba migrar de MySQL a Postgres, y escribir la migración (el schema, la conexión y
+  las búsquedas).
+- Escribir los cambios para que la app se configure por entorno (`/health`, `PORT`,
+  `ALLOWED_ORIGINS` y la plantilla de nginx) y los jobs `deploy-qa` y `deploy-prod` del `ci.yml`.
+- Guiarme paso a paso en las pantallas de Neon, Render y GitHub.
+- Acotar el 403 del login: que la variable se estaba leyendo y el problema era su valor. El valor
+  equivocado lo encontré yo.
+- Ayuda de redacción en este archivo.
+
+Qué hice yo, y no la IA:
+
+- Toda la configuración de las plataformas: el proyecto y las bases de Neon, los cuatro servicios de
+  Render con sus variables, y los environments de GitHub con sus secrets. Los secrets nunca pasaron
+  por la IA: los copié directo de Render a GitHub.
+- Los commits, los push, las ramas y los merges, con los comandos que me daba la IA.
+- Las decisiones del gate: rechazar la primera corrida con mi motivo y aprobar la segunda después de
+  revisar QA.
+- El rollback en Render y la vuelta a la versión aprobada.
+
+Cómo lo verifiqué: probé el login desde los dos fronts; comprobé que las bases están separadas con el
+dato «SOY PROD»; seguí cada corrida en *Actions* (el PR con los deploys salteados, `main` desplegando
+a QA, el rechazo y la aprobación); y comprobé en Render y en `/health` qué commit corría en cada
+entorno después de cada deploy y del rollback. Puedo explicar qué pasa entre el merge y PROD: cada
+`needs`, el gate del environment, qué secret lee cada job y cuándo, y qué espera el smoke test.
