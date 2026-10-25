@@ -7,6 +7,9 @@ import (
 )
 
 func mapUrls() {
+	//HEALTH
+	router.GET("/health", controller.Health) // used by the smoke test of each environment
+
 	//USER
 	router.POST("/user", controller.InsertUser)                  //check
 	router.GET("/users", controller.GetUsers)                    //check
