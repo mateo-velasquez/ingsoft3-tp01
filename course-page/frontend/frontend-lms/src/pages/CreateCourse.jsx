@@ -121,8 +121,8 @@ const CreateCourse = () => {
           Crear Nuevo Curso
         </h1>
 
-        {error && <Alert type="error" message={error} />}
-        {success && <Alert type="success" message={success} />}
+        {error && <Alert type="error">{error}</Alert>}
+        {success && <Alert type="success">{success}</Alert>}
 
         <div className="card p-8">
           <form onSubmit={handleSubmit} className="space-y-6">

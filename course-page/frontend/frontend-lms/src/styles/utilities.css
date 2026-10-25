@@ -592,6 +592,13 @@ body {
   animation: float 6s ease-in-out infinite;
 }
 
+/* Who asks the OS for less motion gets the cards still (the e2e browser asks too). */
+@media (prefers-reduced-motion: reduce) {
+  .floating-element {
+    animation: none;
+  }
+}
+
 @keyframes float {
   0%, 100% { transform: translateY(0px); }
   50% { transform: translateY(-20px); }

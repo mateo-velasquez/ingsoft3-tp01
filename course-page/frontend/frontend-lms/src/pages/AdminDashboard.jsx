@@ -280,6 +280,7 @@ const AdminDashboard = () => {
                           size="sm"
                           variant="danger"
                           onClick={() => handleDeleteCourse(course.id)}
+                          aria-label={`Eliminar ${course.course_name}`}
                         >
                           Eliminar
                         </Button>
@@ -410,14 +411,16 @@ const AdminDashboard = () => {
           <form onSubmit={handleCourseSubmit}>
             <Input
               label="Nombre del Curso"
+              name="course_name"
               value={courseForm.course_name}
               onChange={(e) => setCourseForm(prev => ({ ...prev, course_name: e.target.value }))}
               required
             />
             
             <div className="form-group">
-              <label className="form-label">Descripción</label>
+              <label htmlFor="course_description" className="form-label">Descripción</label>
               <textarea
+                id="course_description"
                 className="form-input form-textarea"
                 value={courseForm.description}
                 onChange={(e) => setCourseForm(prev => ({ ...prev, description: e.target.value }))}
@@ -428,6 +431,7 @@ const AdminDashboard = () => {
             <div className="grid grid-cols-2 gap-4">
               <Input
                 label="Precio"
+                name="price"
                 type="number"
                 step="0.01"
                 value={courseForm.price}
@@ -437,6 +441,7 @@ const AdminDashboard = () => {
               
               <Input
                 label="Duración"
+                name="duration"
                 value={courseForm.duration}
                 onChange={(e) => setCourseForm(prev => ({ ...prev, duration: e.target.value }))}
                 placeholder="ej: 8 semanas"
@@ -446,6 +451,7 @@ const AdminDashboard = () => {
             
             <Input
               label="Fecha de Inicio"
+              name="init_date"
               type="date"
               value={courseForm.init_date}
               onChange={(e) => setCourseForm(prev => ({ ...prev, init_date: e.target.value }))}

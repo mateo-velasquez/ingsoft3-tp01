@@ -4,6 +4,7 @@ import (
 	"errors"
 	"project/dto"
 	"project/model"
+	"strings"
 )
 
 type courseService struct{ repo CourseRepository }
@@ -139,6 +140,12 @@ func (s *courseService) SearchCourses(query string, categoryIDs []int) (dto.Cour
 
 func (s *courseService) InsertCourse(courseDTO dto.CourseDTO) (dto.CourseDTO, error) {
 	var course model.Course
+
+	// Without this an empty name was only rejected by accident: the duplicate check
+	// (course_name ILIKE '%%') matches any existing course.
+	if strings.TrimSpace(courseDTO.CourseName) == "" {
+		return courseDTO, errors.New("the course need a name")
+	}
 
 	// I need to pass the data from the DTO to the DAO
 	course.IDImage = courseDTO.IDImage

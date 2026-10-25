@@ -51,7 +51,9 @@ describe('authService', () => {
   describe('isAdmin', () => {
     it.each([
       ['admin', { id: 1, accesslevel: 'admin' }, true],
+      ['admin as the api sends it', { id: 1, accesslevel: 'Admin' }, true],
       ['a regular user', { id: 2, accesslevel: 'user' }, false],
+      ['a regular user as the api sends it', { id: 2, accesslevel: 'User' }, false],
     ])('is decided by the access level: %s', (_case, user, expected) => {
       storage.setItem('user', JSON.stringify(user));
 

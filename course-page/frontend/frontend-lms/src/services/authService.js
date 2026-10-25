@@ -60,7 +60,8 @@ export const authService = {
   // Check if user is admin
   isAdmin: () => {
     const user = authService.getCurrentUser();
-    return user && user.accesslevel === 'admin';
+    // The api sends 'Admin' (the value stored in the database); compare without case.
+    return !!user && user.accesslevel?.toLowerCase() === 'admin';
   },
 
   // Check if user is teacher
