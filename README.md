@@ -9,7 +9,7 @@ cursos— y la documentación de los trabajos prácticos de la materia.
 |---|---|
 | Backend | Go + Gin + GORM |
 | Frontend | React 19 + Vite 7, servido por nginx |
-| Base de datos | MySQL 8 |
+| Base de datos | PostgreSQL 17 |
 
 - [`decisiones.md`](decisiones.md) — decisiones tomadas y su justificación
 - [`evidencias.md`](evidencias.md) — capturas y salidas de cada TP
@@ -47,7 +47,7 @@ docker compose ps          # esperá "healthy" en database
 |---|---|
 | Aplicación | http://localhost:3000 |
 | API | http://localhost:8080 |
-| Base de datos | localhost:3309 |
+| Base de datos | localhost:5432 |
 
 El primer arranque tarda unos minutos: construye las tres imágenes y la base ejecuta los scripts de
 schema y datos de ejemplo. Las siguientes veces son segundos.
@@ -86,7 +86,7 @@ course-page/
 │   ├── Dockerfile           multi-stage: build con Node, sirve nginx
 │   ├── nginx.conf           estáticos + proxy /api hacia el backend
 │   └── frontend-lms/        código React
-├── database/                MySQL + scripts de schema y datos
+├── database/                PostgreSQL + scripts de schema y datos
 ├── docker-compose.yml       construye las imágenes desde el código
 ├── docker-compose.registry.yml   las descarga del registry
 └── .env.example             plantilla de variables (el .env real no se versiona)
