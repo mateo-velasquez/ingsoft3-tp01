@@ -199,3 +199,49 @@ jobs:
           done
           echo "❌ QA no corre $GITHUB_SHA después de 10 minutos"
           exit 1
+
+  # El mismo commit, un escalón más arriba: sólo si QA quedó vivo y alguien lo aprueba.
+  deploy-prod:
+    runs-on: ubuntu-latest
+    needs: [deploy-qa]                       # sin QA verde no hay PROD (en un PR, deploy-qa se saltea y éste también)
+    environment:
+      name: production                       # ⏸ el job SE PAUSA acá hasta que el required reviewer apruebe
+      url: https://course-page-front-prod.onrender.com
+    # Si entra otro merge mientras éste espera aprobación, el nuevo espera su turno: nunca
+    # dos deploys a PROD a la vez.
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    env:
+      URL_API: https://course-page-api-prod.onrender.com
+      URL_FRONT: https://course-page-front-prod.onrender.com
+    steps:
+      # Acá el &ref= importa más que en QA: entre la pausa y la aprobación pueden pasar horas y
+      # main se mueve. Sin él, se aprueba el commit A y a PROD sube lo último que haya.
+      # Estos secrets viven en el environment production: sin aprobación, no los lee nadie.
+      - name: Disparar el deploy en Render (api + front) del commit aprobado
+        env:
+          HOOK_API: ${{ secrets.RENDER_HOOK_API_PROD }}
+          HOOK_FRONT: ${{ secrets.RENDER_HOOK_FRONT_PROD }}
+        run: |
+          curl -fsS --max-time 30 "$HOOK_API&ref=$GITHUB_SHA" > /dev/null
+          curl -fsS --max-time 30 "$HOOK_FRONT&ref=$GITHUB_SHA" > /dev/null
+
+      # El mismo smoke que QA, contra PROD: tiene que contestar ESTE commit, no el anterior.
+      - name: Smoke test (espera a que PROD corra el commit aprobado)
+        run: |
+          echo "Esperando a que PROD corra $GITHUB_SHA..."
+          for i in $(seq 1 30); do
+            COMMIT=$(curl -fsS --max-time 10 "$URL_API/health" | jq -r .commit || true)
+            if [ "$COMMIT" = "$GITHUB_SHA" ] \
+               && curl -fsS --max-time 10 "$URL_API/courses" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/api/health" > /dev/null; then
+              echo "✅ PROD responde con $GITHUB_SHA (api + BD + front + proxy del front)"
+              exit 0
+            fi
+            echo "Intento $i: la api corre '${COMMIT:-sin respuesta}', todavía no es el commit aprobado"
+            sleep 20
+          done
+          echo "❌ PROD no corre $GITHUB_SHA después de 10 minutos"
+          exit 1
