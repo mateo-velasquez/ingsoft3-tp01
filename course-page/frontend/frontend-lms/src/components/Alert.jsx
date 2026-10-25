@@ -7,7 +7,7 @@ const Alert = ({ type = 'info', children, onClose, className = '' }) => {
   };
 
   return (
-    <div className={`alert ${alertClasses[type]} ${className}`}>
+    <div role="alert" className={`alert ${alertClasses[type]} ${className}`}>
       <div className="flex items-center justify-between">
         <div className="flex-1">
           {children}

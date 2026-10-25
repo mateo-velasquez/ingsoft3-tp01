@@ -104,6 +104,20 @@ func TestInsertCourse_UnknownCategory_DoesNotInsertTheCourse(t *testing.T) {
 	}
 }
 
+func TestInsertCourse_EmptyName_DoesNotInsertTheCourse(t *testing.T) {
+	repo := &fakeCourseRepo{}
+	svc := &courseService{repo: repo}
+
+	_, err := svc.InsertCourse(dto.CourseDTO{CourseName: "   "})
+
+	if err == nil || err.Error() != "the course need a name" {
+		t.Fatalf("expected error \"the course need a name\", got %v", err)
+	}
+	if repo.inserts != 0 {
+		t.Errorf("the course must not be inserted, %d inserts happened", repo.inserts)
+	}
+}
+
 func TestInsertCourse_ExistingCategory_InsertsOnceAndReturnsTheID(t *testing.T) {
 	repo := &fakeCourseRepo{categoryByName: model.Category{IDCategory: 2, CategoryName: "Backend"}}
 	svc := &courseService{repo: repo}

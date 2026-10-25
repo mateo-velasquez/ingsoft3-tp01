@@ -110,6 +110,7 @@ const CourseCard = ({ course, onEnroll, showEnrollButton = true, isEnrolled = fa
             ) : (
               <Button
                 onClick={() => onEnroll(course)}
+                aria-label={`Inscribirse en ${course.course_name}`}
                 variant="primary"
                 className="flex-1"
               >
