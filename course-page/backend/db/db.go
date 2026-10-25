@@ -6,7 +6,7 @@ import (
 	"project/model"
 
 	"github.com/jinzhu/gorm"
-	_ "github.com/jinzhu/gorm/dialects/mysql"
+	_ "github.com/jinzhu/gorm/dialects/postgres"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
 )
@@ -29,14 +29,19 @@ func init() {
 	DBPass := os.Getenv("DB_PASS")
 	DBHost := os.Getenv("DB_HOST")
 	DBPort := os.Getenv("DB_PORT")
+	DBSSLMode := os.Getenv("DB_SSLMODE")
 
 	if DBPort == "" {
-		DBPort = "3309" // valor por defecto si no está seteado
+		DBPort = "5432" // valor por defecto si no está seteado
 	}
 
-	connectionString := DBUser + ":" + DBPass + "@tcp(" + DBHost + ":" + DBPort + ")/" + DBName + "?charset=utf8&parseTime=True"
+	if DBSSLMode == "" {
+		DBSSLMode = "disable" // local sin TLS; en Neon va "require"
+	}
 
-	db, err = gorm.Open("mysql", connectionString)
+	connectionString := "host=" + DBHost + " port=" + DBPort + " user=" + DBUser + " dbname=" + DBName + " password=" + DBPass + " sslmode=" + DBSSLMode
+
+	db, err = gorm.Open("postgres", connectionString)
 	if err != nil {
 		log.Info("Connection Failed to Open")
 		log.Fatal(err)
