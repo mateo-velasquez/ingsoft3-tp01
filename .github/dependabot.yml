@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: "gomod"            # las dependencias del backend (Go)
+    directory: "/course-page/backend"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "npm"              # las del frontend (React)
+    directory: "/course-page/frontend/frontend-lms"
+    schedule:
+      interval: "weekly"
+
+  - package-ecosystem: "github-actions"   # ¡tus actions también son dependencias!
+    directory: "/"
+    schedule:
+      interval: "weekly"
