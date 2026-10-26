@@ -639,3 +639,62 @@ Usé Claude (Claude Code, dentro de VS Code) para ordenar la guía, escribir las
 Yo cambié la fuente de los servicios en Render, pegué los deploy hooks (que nunca pasaron por la IA), hice los commits, PRs y merges, rompí y arreglé el botón, aprobé PROD y creé el tag y la release.
 
 Lo verifiqué corriendo las seis pruebas contra el compose local antes de subirlas, leyendo qué afirma cada una, mirando los dos reportes y la traza de la corrida roja, y revisando en los *Events* de los cuatro servicios que cada deploy nombrara el `sha-` de su corrida.
+
+---
+
+## TP8 – Infraestructura como código
+
+### Enlaces de este TP
+
+- **Carpeta `infra/`:** https://github.com/mateo-velasquez/ingsoft3-tp01/tree/main/infra
+- **PR que la sumó:** https://github.com/mateo-velasquez/ingsoft3-tp01/pull/41
+- **Release:** https://github.com/mateo-velasquez/ingsoft3-tp01/releases/tag/v8.0.0
+
+Preprod vive destruido: nace con `terraform apply` y sus direcciones salen de `terraform output`.
+
+### 1. Riel y versiones fijadas
+
+- Riel canónico: **Terraform** (usé 1.16.6) + **Neon** + **Render**.
+- `kislerdm/neon` **0.18.0** y `render-oss/render` **1.9.1**, con versión exacta y el `.terraform.lock.hcl` en el repo. La de Neon es la que más importa fijar: su repo está archivado y el provider oficial todavía no salió.
+- Las tres claves van como variables de entorno de la terminal, nunca en un archivo del repo. El estado queda en mi máquina y fuera de git (`*.tfstate` en el `.gitignore`), porque tiene la contraseña del rol en texto plano.
+- Región `virginia` (QA y PROD están en Ohio): la base de Neon quedó en `us-east-1`, así que la api queda al lado de su base.
+
+### 2. Por qué un entorno nuevo y qué sigue siendo artesanal
+
+Declaré `preprod` en vez de llevar QA o PROD a código: crear algo que no existe no puede romper lo que ya anda, y la cadena del TP7 sigue usando QA y PROD hasta la defensa. Además preprod es desechable, porque su base nace vacía y el backend crea las tablas con `AutoMigrate`. Producción no es desechable.
+
+**Sigue siendo artesanal** todo lo que hice a mano antes de este TP:
+- los cuatro servicios de QA y PROD, sus variables y los deploy hooks;
+- su proyecto de Neon, con el schema cargado a mano;
+- las claves de API.
+
+Ningún `plan` mío ve nada de eso. **Lo que haría distinto:** importar esos recursos a Terraform (`terraform import`), guardar el estado en un backend remoto y poner `prevent_destroy` en la base de producción.
+
+### 3. De dónde sale cada dirección y el orden del destroy
+
+- `DB_HOST`, `DB_NAME`, `DB_USER` y `DB_PASS` (las que lee `db.go`) salen de `neon_project`, `neon_database` y `neon_role`. Al recrear preprod, el host cambió y la api se conectó igual, sin que tocara nada.
+- `BACKEND_URL` del front sale de `render_web_service.api.url`.
+- `ALLOWED_ORIGINS` de la api no puede salir del front, porque el front ya depende de la api y se formaría un ciclo. Se arma con el nombre del servicio (`https://<nombre>.onrender.com`), y comprobé en el `output` que coincidiera.
+- El destroy fue front → api → base → rol → proyecto: el grafo de esas referencias, recorrido al revés. Ese orden no lo escribió nadie.
+
+Al recrearlo, Render devolvió las mismas URLs. La guía no lo había medido.
+
+### 4. Problemas encontrados y cómo los resolví
+
+- **El `#` en la línea `*.tfvars` de la guía:** en `.gitignore`, un `#` en medio de una línea no es un comentario, así que esa línea no ignoraba ningún archivo. Puse el comentario en una línea aparte.
+- **Neon rechazó el proyecto con `org_id is required`:** una clave personal (*Account settings*) no sabe en qué organización crearlo. Usé una clave de la organización (*Organization settings → API keys*), sin tocar el HCL.
+- **`invalid ownerID: usr-…` en Render:** el id que aparece en la URL del dashboard es el del usuario. El válido (`tea-…`) lo saqué de `GET /v1/owners`.
+- **Mi app es Go, no .NET:** en lugar de `ConnectionStrings__Default` van las seis `DB_*` separadas, más `ALLOWED_ORIGINS`. Sin esa última, el login desde el front da 403 por CORS.
+- **El e2e contra QA falló después del merge del PR #41**, que no tocaba la app: el panel Admin se quedó más de 60 s en «Cargando…» esperando a la api de QA. Re-corrí el job recién después de comprobar que QA respondía bien y que el mismo código había pasado en la corrida anterior. Pasó en verde hasta PROD.
+
+### 5. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) para ordenar la guía paso a paso, escribir el HCL (`main.tf`, `variables.tf`, `outputs.tf`) y el `.gitignore` adaptados a mi app, diagnosticar los errores de Neon, de Render y del e2e, y ayudarme a redactar esta sección.
+
+Yo creé las claves y las cargué en mi terminal, así que nunca pasaron por la IA. También corrí todos los comandos de Terraform, hice el drift a mano en la consola de Neon, y abrí, mergeé y re-corrí el PR.
+
+Lo verifiqué así:
+- leí cada plan antes de escribir `yes`;
+- miré el orden de las líneas `Destroying…`;
+- revisé en las dos consolas que QA y PROD siguieran intactos;
+- probé `/health`, `/courses` y el front de preprod.
