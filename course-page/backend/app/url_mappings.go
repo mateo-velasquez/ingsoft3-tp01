@@ -3,16 +3,12 @@ package app
 import (
 	"project/controller"
 
-	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
 
 func mapUrls() {
 	//HEALTH
 	router.Match([]string{"GET", "HEAD"}, "/health", controller.Health) // used by the smoke test and the external monitor (UptimeRobot asks with HEAD)
-
-	//TEMPORARY (TP9 §3.5): a failing endpoint to see an error reach Sentry. Remove it when the TP is done.
-	router.GET("/falla", func(c *gin.Context) { panic("Falla de prueba del TP9") })
 
 	//USER
 	router.POST("/user", controller.InsertUser)                  //check
