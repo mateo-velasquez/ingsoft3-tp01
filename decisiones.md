@@ -698,3 +698,64 @@ Lo verifiqué así:
 - miré el orden de las líneas `Destroying…`;
 - revisé en las dos consolas que QA y PROD siguieran intactos;
 - probé `/health`, `/courses` y el front de preprod.
+
+---
+
+## TP9 – DevSecOps y observabilidad
+
+### Enlaces de este TP
+
+- **`dependabot.yml`:** https://github.com/mateo-velasquez/ingsoft3-tp01/blob/main/.github/dependabot.yml
+- **PR de Dependabot mergeado:** https://github.com/mateo-velasquez/ingsoft3-tp01/pull/65 · [corrida del merge hasta PROD](https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40387036348)
+- **Sentry en el código:** https://github.com/mateo-velasquez/ingsoft3-tp01/pull/66
+- **Tarjeta en el tablero:** https://github.com/mateo-velasquez/ingsoft3-tp01/issues/67
+- **Release:** https://github.com/mateo-velasquez/ingsoft3-tp01/releases/tag/v9.0.0
+
+### 1. El PR de Dependabot que mergeé
+
+El **#65** actualiza `react-router-dom` de **7.8.2 a 7.18.4**. Me animé a mergearlo por tres cosas:
+- es un **minor** (SemVer del TP6), así que no debería romper la forma de usar la librería;
+- el changelog de esas versiones solo trae *Patch Changes*, sin breaking changes;
+- el CI estaba en verde sobre el PR (build, tests, coverage y gate), y después del merge la cadena lo pasó por integración y e2e contra QA antes de llegar a PROD. La confianza no viene de leer el código de la librería: viene del pipeline que armé del TP4 al TP7.
+
+No mergeé los **majors**: `eslint` 9 → 10 y `@vitejs/plugin-react` 5 → 6 quedaron en rojo en el CI, y `@babel/core` 7 → 8, `@babel/preset-react` 7 → 8 y `eslint-plugin-react-hooks` 5 → 7 cambian de versión mayor.
+
+### 2. Lo que vi en producción
+
+- **El monitor** (UptimeRobot, `HEAD /health` de PROD cada 5 minutos, aviso por mail): suspendí la api a las 13:26 y el mail de **DOWN llegó a las 13:28, a los 2 minutos**. Sin él me habría enterado cuando un usuario se quejara. Después de reactivarla, el **UP llegó a las 13:43**. El monitor quedó pausado.
+- **La operación más usada:** `GET /user/subscriptions/:id`, con 0.0146 pedidos por minuto (el resto, menos de 0.01). En el front, *Navigation*: los cambios de página dentro de la app.
+- **La operación más lenta:** `GET /courses`, con **P95 de 3.28 s** (P50 2.75 s). Con tan pocos pedidos, el primero después de que Render despierta el servicio infla el número. Con ese dato abrí la tarjeta #67 para la próxima versión.
+- **El error:** *"Falla de prueba del TP9"*, de un endpoint `/falla` que hacía `panic` a propósito. Lo saqué en el [PR #68](https://github.com/mateo-velasquez/ingsoft3-tp01/pull/68).
+
+### 3. Qué no mira cada pieza
+
+| Pieza | Qué mira | Qué **no** mira | Quién cubre el hueco |
+|---|---|---|---|
+| Dependabot | Versiones nuevas y fallas publicadas de mis dependencias | Mi propio código, y fallas que todavía nadie publicó | CodeQL |
+| CodeQL | Patrones inseguros en mi código y en los workflows | Si la app anda en producción, y los errores de lógica | Tests y Sentry |
+| Push protection | Secretos con el formato de un proveedor conocido (tokens de GitHub, AWS…) | Una contraseña inventada, como la de la base | Variables de entorno en Render y la review del PR |
+| Monitor | Si `/health` contesta | Errores o lentitud en las demás rutas | Sentry |
+| Sentry | Los errores y tiempos de los pedidos que llegan | Si el servicio está caído: si no llega nada, no avisa | El monitor |
+
+### 4. Problemas encontrados y cómo los resolví
+
+- **`HEAD /health` daba 404 en PROD:** el plan gratis de UptimeRobot consulta con `HEAD`, y Gin no contesta `HEAD` en una ruta `GET`, así que el monitor la habría visto caída aunque anduviera. Agregué `HEAD` a `/health` en el [PR #61](https://github.com/mateo-velasquez/ingsoft3-tp01/pull/61).
+- **CodeQL encontró 4 alertas *"Workflow does not contain permissions"*** en `ci.yml`. Les puse `permissions: contents: read` (mínimo privilegio) en el [PR #60](https://github.com/mateo-velasquez/ingsoft3-tp01/pull/60), y las 4 quedaron cerradas como *fixed*.
+- **Cerré los PRs de Dependabot #44 a #59 sin mergear**, creyendo que ya tenía uno mergeado. El único era el mío, el del `dependabot.yml`, que no cuenta. Después analicé y mergeé el #65.
+- **El UP no llegaba después de reactivar la api:** Render la había dormido y contestaba 503 mientras arrancaba. Abrí `/health` para despertarla y el UP llegó al minuto.
+- **El error llegó a Sentry sin archivo ni línea:** un `panic` con un texto se manda como mensaje, no como excepción. La entrega pide ver un error, así que lo dejé así.
+- **Sentry muestra 0 usuarios:** el SDK no manda IPs ni datos personales si no se le pide.
+- **En el merge del #65, el e2e se colgó** unos 4 minutos instalando el navegador. Lo cancelé y lo re-corrí, y pasó en verde hasta PROD.
+
+### 5. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) para ordenar la guía paso a paso, escribir el `dependabot.yml`, los `permissions` del CI, el cambio de `/health` y la instalación de Sentry en el back y en el front, analizar los PRs de Dependabot y ayudarme a redactar esta sección.
+
+Yo prendí las protecciones en *Settings*, creé las cuentas de UptimeRobot y Sentry, cargué el DSN del backend como variable `SENTRY_DSN` solo en PROD (nunca pasó por el código), provoqué la caída, y abrí y mergeé los PRs.
+
+Lo verifiqué así:
+- vi las 4 alertas de CodeQL cerradas como *fixed* después del merge;
+- probé `HEAD /health` en PROD antes y después del cambio;
+- recibí los mails de DOWN y UP y miré el incidente en el historial del monitor;
+- llamé a `/falla` y vi el error en Sentry, y después comprobé que daba 404;
+- miré las tablas de tiempos y uso en Sentry.
