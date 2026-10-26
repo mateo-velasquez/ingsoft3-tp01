@@ -4,9 +4,11 @@ import (
 	"os"      // Reads the port and the allowed origins from the environment.
 	"strings" // Splits the comma-separated list of allowed origins.
 
-	"github.com/gin-contrib/cors"    // Provides support for Cross-Origin Resource Sharing (CORS).
-	"github.com/gin-gonic/gin"       // The web framework used to handle routes and HTTP requests.
-	log "github.com/sirupsen/logrus" // Imports the logrus library and aliases it as log for logging.
+	"github.com/getsentry/sentry-go"               // Sends errors and request timings to Sentry.
+	sentrygin "github.com/getsentry/sentry-go/gin" // Gin middleware: one transaction per request + panics as issues.
+	"github.com/gin-contrib/cors"                  // Provides support for Cross-Origin Resource Sharing (CORS).
+	"github.com/gin-gonic/gin"                     // The web framework used to handle routes and HTTP requests.
+	log "github.com/sirupsen/logrus"               // Imports the logrus library and aliases it as log for logging.
 )
 
 var (
@@ -20,6 +22,19 @@ func init() {
 	router = gin.Default()
 	// Initializes the router with gin's default configurations.
 	// This includes middleware like the logger and the panic recovery handler.
+
+	// Sentry: what fails, what is slow and what is used in production.
+	// The DSN comes from the environment (only PROD has it): without SENTRY_DSN the SDK
+	// stays off and the app works the same (local, tests, QA).
+	if err := sentry.Init(sentry.ClientOptions{
+		Dsn:              os.Getenv("SENTRY_DSN"),
+		EnableTracing:    true,
+		TracesSampleRate: 1.0, // measure every request
+	}); err != nil {
+		log.Error("Sentry initialization failed: ", err)
+	}
+	// Repanic: after reporting a panic, hand it back to gin's recovery so it still answers 500.
+	router.Use(sentrygin.New(sentrygin.Options{Repanic: true}))
 
 	// Configure CORS to allow frontend connections.
 	// The origins come from the environment: in Render, the URL of the front of THAT
