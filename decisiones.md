@@ -521,3 +521,121 @@ Usé Claude (Claude Code, dentro de VS Code) para ordenar la guía, escribir la 
 Yo configuré las plataformas y los secrets (que nunca pasaron por la IA), hice los commits y merges, decidí el rechazo y la aprobación del gate, e hice el rollback.
 
 Lo verifiqué probando el login en los dos fronts, con el dato «SOY PROD», siguiendo cada corrida en *Actions* y comprobando en `/health` qué commit corría en cada entorno después de cada deploy y del rollback.
+
+---
+---
+
+## TP7 – Contenedores en el pipeline + integración y e2e
+
+### Enlaces de este TP
+
+**Paquetes públicos del registry** (cada versión con su etiqueta `sha-<commit>`):
+- **Backend:** https://github.com/mateo-velasquez/ingsoft3-tp01/pkgs/container/ingsoft3-tp01-backend
+- **Frontend:** https://github.com/mateo-velasquez/ingsoft3-tp01/pkgs/container/ingsoft3-tp01-frontend
+
+**Corrida con la integración en verde y la e2e en rojo, que frenó la promoción:**
+- **Commit que rompió la app** (el botón «Iniciar Sesión» pasó a decir «Entrar»): https://github.com/mateo-velasquez/ingsoft3-tp01/commit/bbe6febd882be6ca91a6ce97f6dfb24a21551426
+- **Corrida:** https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40248705885
+- **Reporte de integración (verde):** https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40248705885/artifacts/12619217858
+- **Reporte e2e (rojo):** https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40248705885/artifacts/12619218601
+
+**Corrida completa en verde, con aprobación, hasta PROD** (el arreglo): https://github.com/mateo-velasquez/ingsoft3-tp01/actions/runs/40250945481
+
+**Release:** https://github.com/mateo-velasquez/ingsoft3-tp01/releases/tag/v7.0.0
+
+**URLs de los entornos:**
+
+| Entorno | Frontend | Backend |
+|---|---|---|
+| **QA** | https://course-page-front-qa.onrender.com | https://course-page-api-qa.onrender.com |
+| **PROD** | https://course-page-front-prod.onrender.com | https://course-page-api-prod.onrender.com |
+
+### 1. Build once, deploy many
+
+En el TP6 Render clonaba el commit y construía su propia imagen, una vez para QA y otra para PROD. El código era el mismo, pero los builds eran dos: `nginx:alpine` y `alpine:3.21` se resuelven en el momento del build, así que QA podía probar una imagen y PROD correr otra. Además, el build de Render no corría los tests.
+
+Ahora el pipeline construye y verifica la imagen **una sola vez**, la publica en `ghcr.io` como `sha-<commit>`, y los cuatro servicios la ejecutan. Lo que pasó las pruebas en QA es, bit a bit, lo que se aprueba para PROD: en el log de `deploy-qa` y de `deploy-prod` de una misma corrida se lee el mismo `imgURL`.
+
+### 2. Etiquetas, Render y release
+
+- **`sha-<commit>`** (registry): de qué commit salió la imagen. Es la que uso para promover, porque el pipeline la arma sola con `github.sha`, y QA y PROD reciben la misma.
+- **`v7.0.0`** (git): el nombre de la versión que anduvo en PROD. Apunta a un commit, no a una imagen.
+- **No publico `latest`**: se movería con cada merge, así que «¿qué hay en PROD?» dejaría de tener respuesta, y un deploy de `latest` podría levantar una imagen que todavía no pasó por QA ni por la aprobación.
+- **Ninguna etiqueta es inmutable.** Si alguien vuelve a publicar `sha-<commit>`, por ejemplo volviendo a correr una corrida vieja, el nombre queda igual pero el contenido cambia, y un redeploy de esa etiqueta llevaría a PROD algo que nadie verificó. Por eso no se re-corren corridas viejas para desplegar. Lo único que no se mueve es el digest (`@sha256:…`), que el hook también acepta.
+
+**La imagen configurada en Render no es la que corre.** A los cuatro servicios existentes les cambié la fuente a *Existing Image* (son los mismos servicios, con las mismas URLs). Render pide una imagen para guardar esa configuración, y le puse `sha-38640c6…`, la del merge del PR #35. Pero cada deploy del pipeline le pasa `imgURL` con el `sha-` de su corrida, y eso es lo que se ejecuta. El valor del panel es sólo el punto de partida.
+
+**De la release a la imagen, en un paso:** `git rev-list -n1 v7.0.0` da el commit, y `ghcr.io/mateo-velasquez/ingsoft3-tp01-{backend,frontend}:sha-<ese commit>` son las dos imágenes. El tag va sobre el commit que *Deployments* muestra en `production`, no sobre el último de `main`: un merge que todavía no aprobé nunca corrió en PROD.
+
+### 3. Cómo se comprueba desde afuera qué imagen corre
+
+- En los *Events* de cada servicio de Render, el deploy dice «Triggered via Deploy Hook» y nombra la imagen `sha-<commit>` de la corrida. Los *Events* no se pueden linkear, así que los muestro en vivo. Un deploy a mano desde el panel no dice «Deploy Hook» y no tiene una corrida que lo respalde.
+- Esa misma etiqueta está en el paquete, y `docker pull` por `sha-<commit>` funciona sin credenciales.
+
+**El smoke ya no puede decir qué versión corre.** En el TP6 comparaba el commit de `/health`, que salía de `RENDER_GIT_COMMIT`, pero un servicio *Existing Image* no recibe esa variable. Ahora sólo prueba que QA responde: api, base, front y el proxy del front. Que responda no dice que sea la imagen nueva ni que la app funcione. Lo primero lo muestran los *Events* y lo segundo, las dos suites.
+
+### 4. Qué pruebo en cada suite y qué dejé afuera
+
+**Integración** (`e2e/api.spec.js`: el fixture `request` contra la api de QA, sin navegador):
+1. Alta → aparece en `GET /courses` → `DELETE` → ya no aparece.
+2. Curso con nombre vacío → `400`, y la cantidad de cursos no cambia.
+3. *(elegida)* Login: con la contraseña correcta da `200` y token, y con una incorrecta da `401`. Es lo primero que hace cualquier usuario: si se rompe, nadie entra y me escriben todos. Depende de la base de verdad (el hash guardado).
+
+**e2e** (`e2e/cursos.spec.js`: Chromium contra el front de QA):
+1. **Creación:** el admin crea un curso desde el panel, lo ve en la lista, lo elimina y ya no está.
+2. **Error:** login con contraseña incorrecta → se ve el error, sigue en `/login` y no hay sesión (no aparece «Salir»).
+3. *(elegido)* **Inscribirse a un curso** y ver la confirmación. Es el flujo de todos los días de la plataforma: si falla, me escriben los alumnos. Además toca la base.
+
+Las pruebas que crean datos usan un nombre con la hora (`e2e <Date.now()>`) y borran lo que crearon, comprobando que se fue. El curso arrastra su inscripción por `ON DELETE CASCADE`. Así una corrida no ensucia la siguiente, y si pasara lo vería en QA como cursos `e2e …` sueltos.
+
+**Lo que no puse (pirámide):** las reglas de negocio una por una (nombre vacío en el servicio, roles, `isAdmin`) están en los unitarios del TP5, que corren en segundos y no dependen de QA. En integración va sólo lo que necesita la base de verdad. En e2e van sólo los flujos que un usuario hace en pantalla, porque cada uno tarda y depende de que QA esté despierto. No hay una e2e por cada validación ni por cada rol.
+
+### 5. Integración vs. e2e: el par verde/rojo
+
+La **integración** prueba que la api y su base hacen lo que dicen (guardan, rechazan, borran), sin pantalla. Ve lo que un unitario con doble no ve: el repositorio falso contesta lo que yo le dije, y la base real tiene sus constraints, las FK con cascade y los nombres reales de las columnas. Por ejemplo, si cambio el nombre de la columna en una etiqueta de GORM, el unitario con el repositorio falso sigue en verde y Postgres lo rechaza.
+
+La **e2e** prueba que una persona puede usar la app: que el front encuentra sus botones, manda lo correcto y muestra la respuesta.
+
+**Mi corrida roja, leída con la tabla de §2.5:** la integración verde dice que la api y la base andan (alta, borrado, login). La e2e roja dice que algo se rompió entre el usuario y la api, o sea, **el front**. El reporte lo confirmó sin abrir el código: la traza muestra el click esperando 60 s un botón «Iniciar Sesión», la página mostrando «Entrar», y en *Network* nunca aparece `/api/login`. Si hubiera roto la api, la integración habría quedado en rojo y la e2e ni siquiera habría corrido (`needs: integracion`).
+
+### 6. Por qué la integración es la amplia
+
+Le habla a la api de QA ya desplegada, con su base en Neon.
+- **Gana:** prueba la imagen que va a ir a PROD, con su configuración real (variables, driver de Postgres, schema cargado en Neon).
+- **Pierde:** corre tarde, cuando QA ya tiene el cambio. Es más lenta, depende de que QA esté despierto y comparte los datos con la e2e (por eso los nombres únicos y la limpieza).
+
+La estrecha, con un Postgres levantado dentro del job, avisaría antes del deploy, pero probaría otra base y otra configuración, no lo que corre.
+
+### 7. Cold start y tests flaky
+
+- Antes de las suites, el smoke ya despertó QA (reintenta hasta 10 min).
+- Timeouts de 60 s por test y de 15 s por `expect`. Las esperas son las de Playwright, que esperan a que aparezca el elemento o el texto, sin `sleep`.
+- `retries: 1`: si algo falla por una demora, reintenta una vez, y ese reintento guarda la traza. Un test que pasa recién en el reintento queda marcado como *flaky* en el reporte, así que no se esconde.
+- `reducedMotion: 'reduce'`, más una regla CSS, para que la animación de la portada no mueva elementos mientras Playwright clickea.
+
+Un **test flaky** es uno que pasa o falla sin que cambie el código. Es peor que no tenerlo: si a veces falla «porque sí», el equipo aprende a re-correr el rojo, y el día que el rojo es de verdad también lo re-corre. Para no fabricarlos, cada test crea y borra sus propios datos y no depende de lo que ya haya en QA.
+
+### 8. La misma imagen del front en QA y PROD
+
+Es lo que dejé preparado en el TP6. El front se compila pidiendo a `/api/...`, así que la URL de la api no queda en el bundle. nginx reenvía `/api` a `${BACKEND_URL}`, usando `${DNS_RESOLVER}`, y las dos variables se completan al arrancar el contenedor con las de cada servicio en Render. Adentro de la imagen quedan los estáticos y la plantilla de nginx. La api funciona igual: `DB_*` y `ALLOWED_ORIGINS` van por variable.
+
+### 9. Qué bug no ataja el gate
+
+- **La configuración propia de PROD:** las suites corren contra QA, así que un `ALLOWED_ORIGINS` mal cargado en PROD pasa el gate.
+- **Lo que las pruebas no miran.** Un caso real que encontré y quedó como deuda: al inscribirse, el front manda `course_role: 'student'`, y el backend guarda «Student» sólo si el rol viene vacío; con cualquier otro valor guarda «Teacher». Los unitarios de cada lado pasan, porque cada uno prueba su mitad. La e2e también pasa, porque afirma el mensaje de confirmación y no el rol guardado.
+
+### 10. Problemas encontrados y cómo los resolví
+
+- **El smoke del TP6 fallaba** esperando el commit en `/health`, que nunca llegaba: los servicios *Existing Image* no reciben `RENDER_GIT_COMMIT`. Lo reduje a «responde», y la imagen se verifica en *Events* (sección 3).
+- **El admin no podía entrar al panel:** `isAdmin` comparaba con `'admin'` y la api manda `'Admin'`. El unitario pasaba porque el usuario de prueba lo había escrito yo con minúscula: el doble contesta lo que le dijiste (§2.5). Lo encontró la e2e. Ahora compara sin importar mayúsculas, y el unitario prueba `'Admin'`.
+- **Playwright no encontraba los campos por su label:** los `<label>` no tenían `htmlFor` y las alertas no tenían `role="alert"`. Además, el alta mostraba el mensaje en una prop que `Alert` no lee. Lo arreglé en los componentes, no en los tests.
+- **El nombre vacío se rechazaba por casualidad** (la búsqueda de repetidos con `ILIKE '%%'` encontraba cualquier curso). Agregué la validación explícita y su unitario.
+- **`docker compose` no levantaba**: dos notas sin `#` en el `.env` local rompían el parseo.
+
+### 11. Declaración de uso de IA
+
+Usé Claude (Claude Code, dentro de VS Code) para ordenar la guía, escribir las dos suites de Playwright, los jobs `integracion` y `e2e`, el cambio de `imgURL` en los deploys y los arreglos del front que encontraron las pruebas, guiarme en las pantallas de Render y GitHub, y ayudarme a redactar este archivo.
+
+Yo cambié la fuente de los servicios en Render, pegué los deploy hooks (que nunca pasaron por la IA), hice los commits, PRs y merges, rompí y arreglé el botón, aprobé PROD y creé el tag y la release.
+
+Lo verifiqué corriendo las seis pruebas contra el compose local antes de subirlas, leyendo qué afirma cada una, mirando los dos reportes y la traza de la corrida roja, y revisando en los *Events* de los cuatro servicios que cada deploy nombrara el `sha-` de su corrida.
