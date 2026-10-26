@@ -8,7 +8,7 @@ import (
 
 func mapUrls() {
 	//HEALTH
-	router.GET("/health", controller.Health) // used by the smoke test of each environment
+	router.Match([]string{"GET", "HEAD"}, "/health", controller.Health) // used by the smoke test and the external monitor (UptimeRobot asks with HEAD)
 
 	//USER
 	router.POST("/user", controller.InsertUser)                  //check
