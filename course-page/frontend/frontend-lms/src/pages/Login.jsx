@@ -135,7 +135,7 @@ const Login = () => {
                 loading={isLoading}
                 className="w-full mt-4"
               >
-                Entrar
+                Iniciar Sesión
               </Button>
             </form>
           </Card.Body>
