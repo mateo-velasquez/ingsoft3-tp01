@@ -21,3 +21,10 @@ z_helps
 coverage/
 coverage.out
 coveragereport/
+
+# terraform: el estado tiene secretos en texto plano, NUNCA se versiona
+# (el .terraform.lock.hcl SÍ se commitea)
+*.tfstate
+*.tfstate.*
+.terraform/
+*.tfvars
